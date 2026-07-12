@@ -25,6 +25,26 @@ Nashville-number display.
 - **Manual editor** — sections (label + color), lines, bars, chords with beat
   counts, split bars, per-bar lyric phrases, and arrangement ordering.
 
+## Features (Phase 2)
+
+- **Paste-and-parse import** (`/songs/import`) — paste an Ultimate
+  Guitar-style sheet (chords above lyrics, `[Verse 1]` headers) or ChordPro
+  text (auto-detected; `{title:}`/`{artist:}`/`{key:}` prefill metadata).
+  Powered by [chordsheetjs](https://github.com/martijnversluis/ChordSheetJS).
+- **Bar heuristics** — each chord change becomes one bar and the lyric chunk
+  under it becomes that bar's phrase (a word split by a mid-word chord change
+  stays with the bar where it starts). No text format encodes bar counts, so
+  they're a first guess to correct in the editor — except pipe lines
+  (`| Am . . . | F |`, common in intro/solo blocks), which are parsed
+  exactly, beat dots included.
+- **Structure detection** — a bare repeated header (`[Chorus]` with nothing
+  under it) becomes a re-reference to the earlier section instead of a new
+  one; sections are auto-colored by role (verse/chorus/bridge/…); the key is
+  guessed from the chords when the paste doesn't declare one. Guitar-tab
+  lines are skipped with a warning.
+- **Live preview** — the pasted text renders as a song map as you type,
+  before anything is saved.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats
@@ -58,9 +78,6 @@ saved.
 
 ## Roadmap
 
-- **Phase 2 — paste-and-parse import**: `chordsheetjs`'s
-  `UltimateGuitarParser` to prefill chords/lyrics/sections from pasted text;
-  bar counts stay manual (no source format encodes them).
 - **Phase 3 — memorization**: progressive hiding, interleaved practice mode
   (shuffled sections), chord-diagram popovers.
 

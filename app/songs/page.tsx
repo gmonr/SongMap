@@ -57,7 +57,15 @@ export default async function SongsPage() {
           <code>.env.local</code>, add your project keys, and run the migration
           in <code>supabase/migrations/</code> to enable your library.
         </div>
-        <h1 className="text-xl font-bold">Library</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold">Library</h1>
+          <Link
+            href="/songs/import"
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Import
+          </Link>
+        </div>
         <SongCard song={DEMO_SONG} badge="demo" />
       </div>
     );
@@ -86,14 +94,22 @@ export default async function SongsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Library</h1>
-        <form action={createSong}>
-          <button
-            type="submit"
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+        <div className="flex items-center gap-2">
+          <Link
+            href="/songs/import"
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            + New song
-          </button>
-        </form>
+            Import
+          </Link>
+          <form action={createSong}>
+            <button
+              type="submit"
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              + New song
+            </button>
+          </form>
+        </div>
       </div>
 
       {songs.length === 0 ? (
