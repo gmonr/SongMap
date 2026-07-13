@@ -71,7 +71,9 @@ export async function createImportedSong(input: ImportedSongInput) {
   }
 
   revalidatePath("/songs");
-  redirect(`/songs/${data.id}`);
+  // Land in the editor: imported bar counts / row shapes are a first guess
+  // meant to be corrected right away (see components/editor row tools).
+  redirect(`/songs/${data.id}/edit`);
 }
 
 export async function deleteSong(id: string) {

@@ -202,8 +202,8 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
               Preview
             </h2>
             <p className="text-xs text-slate-400">
-              Each chord change became one bar — fix bar counts in the editor
-              after creating.
+              Each chord change became one bar — after creating, fix bar counts
+              and reshape rows (move/merge/split bars) in the editor.
             </p>
           </div>
           <SongMap key={effectiveKey + timeSignature} song={previewSong} />
