@@ -1,6 +1,6 @@
 import type { Bar } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
-import { ChordSym } from "./ChordSym";
+import { ChordPopover } from "./ChordPopover";
 
 function BeatDots({ count }: { count: number }) {
   return (
@@ -19,7 +19,9 @@ function BeatDots({ count }: { count: number }) {
 /**
  * One bar of the chord grid: chord symbol(s) on top, one beat dot per beat
  * underneath (so a split bar like "F · · | C · ·" is visually obvious), and
- * the lyric phrase for this bar below.
+ * the lyric phrase for this bar below. Each chord opens a piano-diagram
+ * popover on click. In practice mode a masked bar renders as a blank
+ * click-to-reveal placeholder instead.
  */
 export function BarCell({
   bar,
@@ -29,6 +31,8 @@ export function BarCell({
   displayKey,
   notation,
   borderColor,
+  masked = false,
+  onReveal,
 }: {
   bar: Bar;
   lyric?: string;
@@ -37,7 +41,30 @@ export function BarCell({
   displayKey: string;
   notation: Notation;
   borderColor: string;
+  masked?: boolean;
+  onReveal?: () => void;
 }) {
+  if (masked) {
+    return (
+      <button
+        type="button"
+        onClick={onReveal}
+        className="flex min-w-0 flex-col text-left"
+      >
+        <div
+          className={`flex items-center justify-center rounded-md border border-dashed ${borderColor} bg-slate-50 px-1 py-1.5 hover:bg-slate-100`}
+        >
+          <span className="text-sm font-bold text-slate-300">?</span>
+        </div>
+        {showLyrics && (
+          <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-300 sm:text-xs">
+            •••
+          </p>
+        )}
+      </button>
+    );
+  }
+
   return (
     <div className="flex min-w-0 flex-col">
       <div
@@ -49,7 +76,7 @@ export function BarCell({
             className="flex min-w-0 flex-col items-center justify-between gap-0.5"
             style={{ flexGrow: Math.max(chord.beats, 1) }}
           >
-            <ChordSym
+            <ChordPopover
               sym={chord.sym}
               songKey={songKey}
               displayKey={displayKey}

@@ -1,43 +1,40 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import { SectionCard } from "@/components/song-map/SectionCard";
+import { isMasked } from "@/lib/song/practice";
+import { KEYS, parseKey, shiftKey, type Notation } from "@/lib/song/theory";
 import type { SongRow } from "@/lib/song/types";
-import {
-  KEYS,
-  parseKey,
-  shiftKey,
-  type Notation,
-} from "@/lib/song/theory";
-import { SectionCard } from "./SectionCard";
 
-const NOTATIONS: { value: Notation; label: string; title: string }[] = [
-  { value: "letters", label: "C", title: "Chord letters" },
-  { value: "roman", label: "I", title: "Roman numerals" },
-  { value: "nashville", label: "1", title: "Nashville numbers" },
-];
+const MASK_LEVELS = [0, 25, 50, 75, 100] as const;
 
 /**
- * The Song Map: header with key/transpose/notation controls, then the
- * arrangement rendered as a vertical stack of color-coded section cards.
+ * Progressive hiding: a chosen percentage of bars render as click-to-reveal
+ * placeholders instead of their chord/lyric content, so you can test recall
+ * before checking yourself. "Shuffle" re-randomizes which bars are hidden at
+ * the current level; raising the level is how you ramp up difficulty.
  */
-export function SongMap({
-  song,
-  editHref,
-  practiceHref,
-}: {
-  song: SongRow;
-  editHref?: string;
-  practiceHref?: string;
-}) {
+export function ProgressiveHideView({ song }: { song: SongRow }) {
   const songKey = song.key || "C";
   const [displayKey, setDisplayKey] = useState(songKey);
   const [notation, setNotation] = useState<Notation>("letters");
   const [showLyrics, setShowLyrics] = useState(true);
+  const [maskPercent, setMaskPercent] = useState<number>(50);
+  const [seed, setSeed] = useState(0);
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
 
   const { tonic: displayTonic, minor } = parseKey(displayKey);
 
-  // "same as Verse 1" labels: first arrangement instance of each section.
+  const reshuffle = () => {
+    setSeed((s) => s + 1);
+    setRevealed(new Set());
+  };
+
+  const setLevel = (percent: number) => {
+    setMaskPercent(percent);
+    setRevealed(new Set());
+  };
+
   const firstInstanceLabel = new Map<string, string>();
   for (const item of song.data.arrangement) {
     if (!firstInstanceLabel.has(item.ref)) {
@@ -47,21 +44,7 @@ export function SongMap({
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-bold leading-tight">
-            {song.title}
-          </h1>
-          <p className="truncate text-sm text-slate-500">
-            {song.artist}
-            {song.tempo ? ` · ♩=${song.tempo}` : ""}
-            {song.time_signature ? ` · ${song.time_signature}` : ""}
-            {song.capo ? ` · capo ${song.capo}` : ""}
-          </p>
-        </div>
-        <span className="flex-1" />
-
-        {/* Key selector + semitone transpose */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -74,9 +57,7 @@ export function SongMap({
           <select
             aria-label="Key"
             value={displayTonic}
-            onChange={(e) =>
-              setDisplayKey(e.target.value + (minor ? "m" : ""))
-            }
+            onChange={(e) => setDisplayKey(e.target.value + (minor ? "m" : ""))}
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-semibold"
           >
             {KEYS.map((k) => (
@@ -94,28 +75,57 @@ export function SongMap({
           >
             +
           </button>
-          {displayKey !== songKey && (
-            <button
-              type="button"
-              onClick={() => setDisplayKey(songKey)}
-              className="ml-1 text-xs text-blue-600 hover:underline"
-            >
-              reset
-            </button>
-          )}
         </div>
 
-        {/* Letters / Roman / Nashville toggle */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium text-slate-500">Hide</span>
+          <div
+            role="group"
+            aria-label="Hide percentage"
+            className="flex overflow-hidden rounded-md border border-slate-300"
+          >
+            {MASK_LEVELS.map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setLevel(level)}
+                className={`px-2.5 py-1 text-sm font-semibold ${
+                  maskPercent === level
+                    ? "bg-slate-800 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {level}%
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={reshuffle}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          ⤾ Shuffle
+        </button>
+
+        <span className="flex-1" />
+
         <div
           role="group"
           aria-label="Notation"
           className="flex overflow-hidden rounded-md border border-slate-300"
         >
-          {NOTATIONS.map((n) => (
+          {(
+            [
+              { value: "letters", label: "C" },
+              { value: "roman", label: "I" },
+              { value: "nashville", label: "1" },
+            ] as const
+          ).map((n) => (
             <button
               key={n.value}
               type="button"
-              title={n.title}
               onClick={() => setNotation(n.value)}
               className={`px-3 py-1 text-sm font-semibold ${
                 notation === n.value
@@ -128,7 +138,6 @@ export function SongMap({
           ))}
         </div>
 
-        {/* Structure-only mode: hide lyrics */}
         <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
@@ -138,25 +147,7 @@ export function SongMap({
           />
           Lyrics
         </label>
-
-        {practiceHref && (
-          <Link
-            href={practiceHref}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Practice
-          </Link>
-        )}
-
-        {editHref && (
-          <Link
-            href={editHref}
-            className="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
-          >
-            Edit
-          </Link>
-        )}
-      </header>
+      </div>
 
       {song.data.arrangement.map((item, i) => {
         const def = song.data.sections[item.ref];
@@ -174,6 +165,14 @@ export function SongMap({
             displayKey={displayKey}
             notation={notation}
             showLyrics={showLyrics}
+            isBarMasked={(li, bi) => {
+              const key = `${i}-${li}-${bi}`;
+              return !revealed.has(key) && isMasked(seed, key, maskPercent);
+            }}
+            onRevealBar={(li, bi) => {
+              const key = `${i}-${li}-${bi}`;
+              setRevealed((prev) => new Set(prev).add(key));
+            }}
           />
         );
       })}
