@@ -62,6 +62,28 @@ Nashville-number display.
   view) to see its notes on a piano keyboard, root highlighted; closes on
   outside click or Escape.
 
+## Features (Phase 4)
+
+- **Reshape page** (`/songs/[id]/reshape`) — the import's bar layout is a
+  first guess (see Phase 2), and fixing it in the editor meant cut-and-paste
+  across many small inputs. Reshape restructures a song with plain taps on
+  compact bar chips, so it works the same on mobile and desktop. Three modes
+  behind one toggle (deep-linkable via `?mode=lyrics` / `?mode=chords`):
+  - **Rows** — tap the seam between two bars to break the row there; tap the
+    merge seam between two rows to join them. Lyrics stay with their bar.
+  - **Lyrics** — each bar shows its chord label over its words as pills; tap
+    the gap between two words to move the nearest bar break there. Tap a
+    bar's chord label to pick up its whole phrase, then ◀ ▶ to shift it a bar
+    at a time (occupied neighbors ripple into the row's first empty bar).
+  - **Chords** — tap a chord (say, the stray one in a split bar), then ◀ ▶ to
+    walk it into the neighboring bar, across row boundaries too. An empty bar
+    absorbs it, an occupied bar becomes a split bar, and beats re-split
+    evenly using the same rule as the importer.
+- **Tests** — `npm test` runs the [vitest](https://vitest.dev) unit tests in
+  `lib/song/__tests__/` covering the data ops behind reshape: row
+  split/merge, word-boundary moves, phrase shifts, and chord moves with beat
+  redistribution.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats
