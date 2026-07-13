@@ -7,10 +7,15 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function ReshapeSongPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }) {
   const { id } = await params;
+  const { mode } = await searchParams;
+  const initialMode =
+    mode === "lyrics" || mode === "chords" ? mode : undefined;
 
   // The bundled demo song is read-only (reshape saves), like the editor.
   if (id === DEMO_SONG_ID || !isSupabaseConfigured) {
@@ -31,5 +36,11 @@ export default async function ReshapeSongPage({
 
   if (!song) notFound();
 
-  return <ReshapeView song={song} songHref={`/songs/${song.id}`} />;
+  return (
+    <ReshapeView
+      song={song}
+      songHref={`/songs/${song.id}`}
+      initialMode={initialMode}
+    />
+  );
 }

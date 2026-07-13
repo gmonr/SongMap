@@ -15,21 +15,21 @@
  */
 import type { Line } from "./types";
 
-interface DenseCell {
+export interface DenseCell {
   bar: Line["bars"][number];
   /** The lyric under this bar, "" when none. */
   lyric: string;
 }
 
 /** Pair every bar with its lyric text (sparse spans -> one entry per bar). */
-function toDense(line: Line): DenseCell[] {
+export function toDense(line: Line): DenseCell[] {
   const byBar = new Map<number, string>();
   for (const s of line.lyrics) byBar.set(s.bar, s.text);
   return line.bars.map((bar, i) => ({ bar, lyric: byBar.get(i) ?? "" }));
 }
 
 /** Rebuild a Line from dense cells, re-deriving the sparse lyric spans. */
-function fromDense(cells: DenseCell[]): Line {
+export function fromDense(cells: DenseCell[]): Line {
   const lyrics = cells
     .map((c, i) => ({ text: c.lyric, bar: i }))
     .filter((s) => s.text !== "");

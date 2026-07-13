@@ -2,59 +2,66 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { sectionColor } from "@/lib/song/colors";
-import { mergeLineWithNext, splitLine } from "@/lib/song/lines";
+import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
+import { ChordsSection } from "./ChordsSection";
+import { LyricsSection } from "./LyricsSection";
+import { ModeToggle, type ReshapeMode } from "./ModeToggle";
+import { RowsSection } from "./RowsSection";
+
+const HINTS: Record<ReshapeMode, ReactNode> = {
+  rows: (
+    <>
+      Tap the seam <b className="font-semibold text-slate-600">between two bars</b>{" "}
+      to break a row there. Tap a{" "}
+      <b className="font-semibold text-slate-600">merge</b> seam between two rows
+      to join them back. Lyrics stay with their bar.
+    </>
+  ),
+  lyrics: (
+    <>
+      Tap the gap <b className="font-semibold text-slate-600">between two words</b>{" "}
+      to move the bar break there. Tap a bar&apos;s{" "}
+      <b className="font-semibold text-slate-600">chord label</b> to pick up its
+      whole phrase, then ◀ ▶ to shift it a bar at a time. To move words between
+      rows, merge the rows in Rows mode first.
+    </>
+  ),
+  chords: (
+    <>
+      Tap a <b className="font-semibold text-slate-600">chord</b> to pick it up,
+      then ◀ ▶ to move it into the neighboring bar. An empty bar absorbs it; an
+      occupied bar becomes a split bar. Beats re-split evenly.
+    </>
+  ),
+};
 
 /**
- * A compact, read-only bar block: chord symbol(s) on top, its lyric phrase
- * below. Small enough that several fit per line, so the row structure is
- * visible at a glance — the whole point of reshaping here instead of in the
- * big editor cards.
- */
-function BarChip({ bar, lyric }: { bar: Line["bars"][number]; lyric: string }) {
-  return (
-    <div className="flex w-16 shrink-0 flex-col items-center">
-      <div className="flex w-full items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-1 py-1.5">
-        {bar.chords.map((c, i) => (
-          <span
-            key={i}
-            className={`truncate text-sm font-bold ${
-              c.sym ? "" : "text-slate-300"
-            }`}
-          >
-            {c.sym || "—"}
-          </span>
-        ))}
-      </div>
-      <p className="mt-0.5 h-4 w-full truncate text-center text-[10px] leading-tight text-slate-500">
-        {lyric}
-      </p>
-    </div>
-  );
-}
-
-/**
- * Reshape mode: merge or break the rows of each section, on the compact
- * song-map blocks (not the big editor boxes). Tapping the seam between two
- * bars breaks the row there; tapping the "merge" seam between two rows joins
- * them. Merge + break together cover any row layout, and both are plain taps —
- * so the interaction is identical on mobile and desktop.
+ * Reshape mode: restructure a song without retyping anything, on the compact
+ * song-map blocks (not the big editor boxes). Three tap-based tools — Rows
+ * (break/merge row layout), Lyrics (redistribute words across bars), Chords
+ * (nudge a chord into a neighboring bar) — so the interaction is identical
+ * on mobile and desktop.
  */
 export function ReshapeView({
   song,
   songHref,
+  initialMode = "rows",
 }: {
   song: SongRow;
   songHref: string;
+  initialMode?: ReshapeMode;
 }) {
   const router = useRouter();
   const [data, setData] = useState<SongData>(song.data);
+  const [mode, setMode] = useState<ReshapeMode>(initialMode);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = data !== song.data;
+  const beats = beatsPerBar(song.time_signature);
 
   // Sections in the order they first appear in the arrangement, then any that
   // aren't arranged. Each unique section is shown once (editing a shared
@@ -69,17 +76,20 @@ export function ReshapeView({
     if (!orderedIds.includes(id)) orderedIds.push(id);
   }
 
+  // Skip the state update entirely when the op no-ops (ops signal this by
+  // returning the same lines reference), so stray taps don't set `dirty`.
   const applyToSection = (id: string, fn: (lines: Line[]) => Line[]) =>
-    setData((d) => ({
-      ...d,
-      sections: {
-        ...d.sections,
-        [id]: { ...d.sections[id], lines: fn(d.sections[id].lines) },
-      },
-    }));
-
-  const lyricFor = (line: Line, barIdx: number) =>
-    line.lyrics.find((s) => s.bar === barIdx)?.text ?? "";
+    setData((d) => {
+      const next = fn(d.sections[id].lines);
+      if (next === d.sections[id].lines) return d;
+      return {
+        ...d,
+        sections: {
+          ...d.sections,
+          [id]: { ...d.sections[id], lines: next },
+        },
+      };
+    });
 
   const save = async () => {
     setSaving(true);
@@ -107,10 +117,11 @@ export function ReshapeView({
           </Link>
           <h1 className="truncate text-xl font-bold leading-tight">
             {song.title}{" "}
-            <span className="font-normal text-slate-400">· Reshape rows</span>
+            <span className="font-normal text-slate-400">· Reshape</span>
           </h1>
         </div>
         <span className="flex-1" />
+        <ModeToggle mode={mode} onChange={setMode} />
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <button
           type="button"
@@ -123,15 +134,13 @@ export function ReshapeView({
       </header>
 
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        Tap the seam <span className="font-semibold text-slate-600">between two bars</span>{" "}
-        to break a row there. Tap a{" "}
-        <span className="font-semibold text-slate-600">merge</span> seam between
-        two rows to join them back. Lyrics stay with their bar.
+        {HINTS[mode]}
       </p>
 
       {orderedIds.map((id) => {
         const def = data.sections[id];
         const color = sectionColor(def.color);
+        const apply = (fn: (lines: Line[]) => Line[]) => applyToSection(id, fn);
         return (
           <section
             key={id}
@@ -149,53 +158,12 @@ export function ReshapeView({
               </h2>
             </div>
 
-            <div className="space-y-1 px-4 pb-4 pt-2">
-              {def.lines.map((line, li) => (
-                <div key={li}>
-                  <div className="flex flex-wrap items-start">
-                    {line.bars.map((bar, bi) => (
-                      <div key={bi} className="flex items-stretch">
-                        <BarChip bar={bar} lyric={lyricFor(line, bi)} />
-                        {bi < line.bars.length - 1 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              applyToSection(id, (lines) =>
-                                splitLine(lines, li, bi + 1)
-                              )
-                            }
-                            title="Break row here"
-                            aria-label={`Break row after bar ${bi + 1}`}
-                            className="group flex w-5 shrink-0 items-center justify-center self-stretch"
-                          >
-                            <span className="h-10 w-px bg-slate-200 transition-all group-hover:w-1 group-hover:bg-blue-400" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {li < def.lines.length - 1 && (
-                    <div className="flex items-center gap-2 py-1">
-                      <span className="h-px flex-1 bg-slate-200" />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          applyToSection(id, (lines) =>
-                            mergeLineWithNext(lines, li)
-                          )
-                        }
-                        title="Merge these two rows"
-                        aria-label={`Merge row ${li + 1} with row ${li + 2}`}
-                        className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-slate-400 hover:border-blue-400 hover:text-blue-600"
-                      >
-                        merge ⤢
-                      </button>
-                      <span className="h-px flex-1 bg-slate-200" />
-                    </div>
-                  )}
-                </div>
-              ))}
+            <div className="px-4 pb-4 pt-2">
+              {mode === "rows" && <RowsSection def={def} apply={apply} />}
+              {mode === "lyrics" && <LyricsSection def={def} apply={apply} />}
+              {mode === "chords" && (
+                <ChordsSection def={def} apply={apply} beats={beats} />
+              )}
             </div>
           </section>
         );
