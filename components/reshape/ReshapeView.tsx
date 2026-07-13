@@ -9,10 +9,11 @@ import {
   insertChord,
   moveChord,
   nearestChordSym,
+  renameChord,
   setBeatBoundary,
 } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
-import { shiftLyric } from "@/lib/song/lyrics";
+import { setBarLyric, shiftLyric } from "@/lib/song/lyrics";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
@@ -43,7 +44,8 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       Tap the gap <b className="font-semibold text-slate-600">between two words</b>{" "}
       to move the bar break there. Tap a bar&apos;s{" "}
       <b className="font-semibold text-slate-600">chord label</b> to pick up its
-      whole phrase, then ◀ ▶ in the bottom bar to shift it a bar at a time. To
+      whole phrase, then ◀ ▶ in the bottom bar to shift it a bar at a time and{" "}
+      <b className="font-semibold text-slate-600">✎</b> to retype its words. To
       move words between rows, merge the rows in Rows mode first.
     </>
   ),
@@ -52,8 +54,9 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       Tap a <b className="font-semibold text-slate-600">chord</b> to pick it up:
       ◀ ▶ moves it into the neighboring bar,{" "}
       <b className="font-semibold text-slate-600">＋ before / after</b> adds a
-      copy beside it, <b className="font-semibold text-slate-600">🗑</b> deletes
-      it, and tapping a gap in the{" "}
+      copy beside it, <b className="font-semibold text-slate-600">✎</b> renames
+      it, <b className="font-semibold text-slate-600">🗑</b> deletes it, and
+      tapping a gap in the{" "}
       <b className="font-semibold text-slate-600">beat dots</b> moves the beat
       split. Empty <b className="font-semibold text-slate-600">—</b> bars are
       tappable to give them a chord.
@@ -211,6 +214,45 @@ export function ReshapeView({
     );
     setSel(null);
   };
+
+  // P2's ✎: the one interaction that types. Renaming a chord keeps its
+  // beats; a lyric edit rewrites the phrase's words in place. Committing an
+  // empty lyric clears the phrase and drops the selection (an empty phrase
+  // can't be re-picked in Lyrics mode).
+  const editSel = (text: string) => {
+    if (!sel) return;
+    if (sel.kind === "chord") {
+      applyToSection(sel.sectionId, (lines) =>
+        renameChord(lines, sel.li, sel.bi, sel.ci, text)
+      );
+    } else {
+      applyToSection(sel.sectionId, (lines) => {
+        const next = setBarLyric(lines[sel.li], sel.bar, text);
+        return next === lines[sel.li]
+          ? lines
+          : lines.map((l, i) => (i === sel.li ? next : l));
+      });
+      if (text === "") setSel(null);
+    }
+  };
+
+  const selEdit =
+    sel && selLines
+      ? sel.kind === "chord"
+        ? selIsEmptyBar
+          ? undefined
+          : {
+              value: selBar?.chords[sel.ci]?.sym ?? "",
+              label: "Edit chord",
+              onSubmit: editSel,
+            }
+        : {
+            value: lyricFor(selLines[sel.li], sel.bar),
+            label: "Edit lyric",
+            onSubmit: editSel,
+            allowEmpty: true,
+          }
+      : undefined;
 
   const setBoundary = (ci: number, chordBeats: number) => {
     if (sel?.kind !== "chord") return;
@@ -389,6 +431,13 @@ export function ReshapeView({
 
       {sel && (
         <SelectionBar
+          // Keyed by selection identity so a mid-edit tap on another chip
+          // resets the SelectionBar's draft instead of carrying it over.
+          key={
+            sel.kind === "chord"
+              ? `c:${sel.sectionId}:${sel.li}:${sel.bi}:${sel.ci}`
+              : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
+          }
           title={selTitle}
           subtitle={
             sel.kind === "chord"
@@ -403,6 +452,7 @@ export function ReshapeView({
           onMove={moveSel}
           onClear={() => setSel(null)}
           tools={chordTools}
+          edit={selEdit}
         />
       )}
     </div>

@@ -71,6 +71,21 @@ export function setWordBoundary(
 }
 
 /**
+ * Replace the lyric of bar `bar` with `text`, whitespace-normalized like
+ * every op in this module; "" (or only whitespace) removes the span. Other
+ * bars are untouched. Same-reference no-op when the bar doesn't exist or the
+ * normalized text matches what's already there.
+ */
+export function setBarLyric(line: Line, bar: number, text: string): Line {
+  if (bar < 0 || bar >= line.bars.length) return line;
+  const next = lyricWords(text).join(" ");
+  const cells = toDense(line);
+  if (next === cells[bar].lyric) return line;
+  cells[bar] = { ...cells[bar], lyric: next };
+  return fromDense(cells);
+}
+
+/**
  * Move the whole lyric of bar `from` one bar over in `dir`. If the target
  * bar already has a lyric, the occupied chain starting there shifts one bar
  * along in the same direction, into the first empty bar of the row. No-op

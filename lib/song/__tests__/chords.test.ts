@@ -6,6 +6,7 @@ import {
   insertChord,
   moveChord,
   nearestChordSym,
+  renameChord,
   setBeatBoundary,
 } from "../chords";
 import { bar, line, lyricsOf } from "./helpers";
@@ -169,6 +170,24 @@ describe("deleteChord", () => {
     expect(deleteChord(rows, 0, 0, 0)).toBe(rows); // placeholder chord
     expect(deleteChord(rows, 0, 1, 5)).toBe(rows); // bad chord index
     expect(deleteChord(rows, 2, 0, 0)).toBe(rows); // bad line index
+  });
+});
+
+describe("renameChord", () => {
+  it("changes the symbol, keeping the bar's beat split", () => {
+    const rows = [line([split("A", 1, "B", 3), bar("G")], { 0: "la" })];
+    const out = renameChord(rows, 0, 0, 1, "Bm");
+    expect(chordsOf(out[0])).toEqual([["A:1", "Bm:3"], ["G:4"]]);
+    expect(lyricsOf(out[0])).toEqual(["la", ""]);
+  });
+
+  it("no-ops on placeholders, empty or unchanged syms, and bad coords", () => {
+    const rows = [line([bar(), bar("C")])];
+    expect(renameChord(rows, 0, 0, 0, "G")).toBe(rows); // placeholder chord
+    expect(renameChord(rows, 0, 1, 0, "")).toBe(rows); // empty sym
+    expect(renameChord(rows, 0, 1, 0, "C")).toBe(rows); // unchanged
+    expect(renameChord(rows, 0, 1, 5, "G")).toBe(rows); // bad chord index
+    expect(renameChord(rows, 2, 0, 0, "G")).toBe(rows); // bad line index
   });
 });
 
