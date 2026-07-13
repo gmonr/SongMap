@@ -20,6 +20,8 @@ export function SectionCard({
   displayKey,
   notation,
   showLyrics,
+  isBarMasked,
+  onRevealBar,
 }: {
   def: SectionDef;
   item: ArrangementItem;
@@ -28,6 +30,10 @@ export function SectionCard({
   displayKey: string;
   notation: Notation;
   showLyrics: boolean;
+  /** Practice mode: whether the bar at (lineIndex, barIndex) is hidden. */
+  isBarMasked?: (lineIndex: number, barIndex: number) => boolean;
+  /** Practice mode: reveal the bar at (lineIndex, barIndex). */
+  onRevealBar?: (lineIndex: number, barIndex: number) => void;
 }) {
   const [expanded, setExpanded] = useState(!item.sameChordsAs);
   const color = sectionColor(def.color);
@@ -86,6 +92,8 @@ export function SectionCard({
                     displayKey={displayKey}
                     notation={notation}
                     borderColor={color.barBorder}
+                    masked={isBarMasked?.(li, bi) ?? false}
+                    onReveal={() => onRevealBar?.(li, bi)}
                   />
                 ))}
               </div>

@@ -45,6 +45,23 @@ Nashville-number display.
 - **Live preview** — the pasted text renders as a song map as you type,
   before anything is saved.
 
+## Features (Phase 3)
+
+- **Practice mode** (`/songs/[id]/practice`) — two memorization drills,
+  switchable from the same screen, both built on the regular song-map
+  rendering so transpose/notation/lyrics controls behave the same as the
+  main view.
+  - **Progressive hiding** — pick what fraction of bars (0/25/50/75/100%)
+    render as blank click-to-reveal cards instead of their chord and lyric;
+    "Shuffle" redraws which bars are hidden at the current level so repeat
+    passes don't just memorize a fixed pattern.
+  - **Shuffled sections** — steps through the arrangement's sections one at
+    a time in a randomized order, to practice recall without leaning on the
+    song's usual sequence. "Reshuffle" draws a new order.
+- **Chord-diagram popovers** — click any chord symbol (song map or practice
+  view) to see its notes on a piano keyboard, root highlighted; closes on
+  outside click or Escape.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats
@@ -75,11 +92,6 @@ numbers are always computed from `key` + chord symbol at render time.
 Without `.env.local` the app runs in **demo mode**: the bundled demo song
 (`/songs/demo`) shows the full song-map view, but nothing can be created or
 saved.
-
-## Roadmap
-
-- **Phase 3 — memorization**: progressive hiding, interleaved practice mode
-  (shuffled sections), chord-diagram popovers.
 
 ## Notes
 

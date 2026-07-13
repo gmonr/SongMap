@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
-import { SongMap } from "@/components/song-map/SongMap";
+import { PracticeView } from "@/components/practice/PracticeView";
 import { DEMO_SONG, DEMO_SONG_ID } from "@/lib/song/demo";
 import type { SongRow } from "@/lib/song/types";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function SongPage({
+export default async function PracticePage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -13,7 +13,7 @@ export default async function SongPage({
   const { id } = await params;
 
   if (id === DEMO_SONG_ID) {
-    return <SongMap song={DEMO_SONG} practiceHref={`/songs/${DEMO_SONG_ID}/practice`} />;
+    return <PracticeView song={DEMO_SONG} songHref={`/songs/${DEMO_SONG_ID}`} />;
   }
 
   if (!isSupabaseConfigured) notFound();
@@ -27,11 +27,5 @@ export default async function SongPage({
 
   if (!song) notFound();
 
-  return (
-    <SongMap
-      song={song}
-      editHref={`/songs/${song.id}/edit`}
-      practiceHref={`/songs/${song.id}/practice`}
-    />
-  );
+  return <PracticeView song={song} songHref={`/songs/${song.id}`} />;
 }
