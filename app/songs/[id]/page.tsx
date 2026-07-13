@@ -32,6 +32,7 @@ export default async function SongPage({
       song={song}
       editHref={`/songs/${song.id}/edit`}
       practiceHref={`/songs/${song.id}/practice`}
+      reshapeHref={`/songs/${song.id}/reshape`}
     />
   );
 }

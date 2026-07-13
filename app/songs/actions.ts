@@ -71,7 +71,9 @@ export async function createImportedSong(input: ImportedSongInput) {
   }
 
   revalidatePath("/songs");
-  redirect(`/songs/${data.id}`);
+  // Land in reshape mode: the import heuristic's one-row-per-source-line bar
+  // grouping is a first guess, and merging/breaking rows is the usual first fix.
+  redirect(`/songs/${data.id}/reshape`);
 }
 
 export async function deleteSong(id: string) {

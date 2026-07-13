@@ -25,10 +25,12 @@ export function SongMap({
   song,
   editHref,
   practiceHref,
+  reshapeHref,
 }: {
   song: SongRow;
   editHref?: string;
   practiceHref?: string;
+  reshapeHref?: string;
 }) {
   const songKey = song.key || "C";
   const [displayKey, setDisplayKey] = useState(songKey);
@@ -145,6 +147,15 @@ export function SongMap({
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             Practice
+          </Link>
+        )}
+
+        {reshapeHref && (
+          <Link
+            href={reshapeHref}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Reshape
           </Link>
         )}
 
