@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import {
   lineWordLayout,
   setWordBoundary,
-  shiftLyric,
   type WordLayout,
 } from "@/lib/song/lyrics";
 import type { Line, SectionDef } from "@/lib/song/types";
+import type { ReshapeSelection } from "./ReshapeView";
 
 /**
  * Which boundary a tap at global word position `gap` (inside bar `bi`'s word
@@ -37,19 +36,24 @@ function boundaryFor(
  * Lyrics mode: redistribute a row's words across its bars without retyping.
  * Each bar shows its chord(s) above its words; tapping the slim gap between
  * two words moves the nearest bar break there. Tapping a bar's chord header
- * selects its whole phrase, with ◀ ▶ to shift it a bar at a time (occupied
- * neighbors ripple into the row's first empty bar). Word moves are row-local:
- * to move words between rows, merge the rows in Rows mode first.
+ * selects its whole phrase; the docked SelectionBar's ◀ ▶ shift it a bar at
+ * a time (occupied neighbors ripple into the row's first empty bar). Word
+ * moves are row-local: to move words between rows, merge the rows in Rows
+ * mode first.
  */
 export function LyricsSection({
   def,
+  sectionId,
   apply,
+  sel,
+  onSelect,
 }: {
   def: SectionDef;
+  sectionId: string;
   apply: (fn: (lines: Line[]) => Line[]) => void;
+  sel: ReshapeSelection | null;
+  onSelect: (sel: ReshapeSelection | null) => void;
 }) {
-  const [sel, setSel] = useState<{ li: number; bar: number } | null>(null);
-
   const applyToLine = (li: number, fn: (line: Line) => Line) =>
     apply((lines) => {
       const next = fn(lines[li]);
@@ -63,6 +67,9 @@ export function LyricsSection({
       {def.lines.map((line, li) => {
         const layout = lineWordLayout(line);
 
+        // Slim 1px seam with a ~24px invisible hit box: the button is wider
+        // than the layout space it takes (negative margins), floating above
+        // the inert word chips beside it so mis-taps still land on it.
         const gapButton = (bi: number, gapInBar: number) => {
           const gap = layout.bars[bi].start + gapInBar;
           const boundary = boundaryFor(layout, bi, gap);
@@ -75,7 +82,7 @@ export function LyricsSection({
               }
               title="Move bar break here"
               aria-label="Move bar break here"
-              className="group flex w-3 shrink-0 items-center justify-center self-stretch"
+              className="group relative z-10 -mx-1.5 flex w-6 shrink-0 items-center justify-center self-stretch"
             >
               <span className="h-4 w-px bg-slate-200 transition-all group-hover:w-1 group-hover:bg-blue-400" />
             </button>
@@ -90,7 +97,11 @@ export function LyricsSection({
                   .map((c) => c.sym)
                   .filter(Boolean)
                   .join(" ") || "—";
-              const selected = sel?.li === li && sel?.bar === bi;
+              const selected =
+                sel?.kind === "phrase" &&
+                sel.sectionId === sectionId &&
+                sel.li === li &&
+                sel.bar === bi;
               const hasLyric = b.words.length > 0;
               return (
                 <div key={bi} className="flex items-stretch">
@@ -101,47 +112,29 @@ export function LyricsSection({
                     />
                   )}
                   <div
-                    className={`flex flex-col gap-0.5 rounded-md px-0.5 py-0.5 ${
+                    className={`flex flex-col gap-0.5 rounded-md px-1 py-0.5 ${
                       selected ? "bg-blue-50 ring-1 ring-blue-300" : ""
                     }`}
                   >
-                    <div className="flex items-center gap-0.5">
-                      {selected && (
-                        <ShiftButton
-                          dir={-1}
-                          line={line}
-                          bar={bi}
-                          onShift={() =>
-                            applyToLine(li, (l) => shiftLyric(l, bi, -1))
-                          }
-                        />
-                      )}
-                      <button
-                        type="button"
-                        disabled={!hasLyric}
-                        onClick={() => setSel(selected ? null : { li, bar: bi })}
-                        title={
-                          hasLyric ? "Select phrase to shift it" : undefined
-                        }
-                        className={`text-[10px] font-bold ${
-                          hasLyric
-                            ? "text-slate-400 hover:text-blue-600"
-                            : "cursor-default text-slate-300"
-                        }`}
-                      >
-                        {chordLabel}
-                      </button>
-                      {selected && (
-                        <ShiftButton
-                          dir={1}
-                          line={line}
-                          bar={bi}
-                          onShift={() =>
-                            applyToLine(li, (l) => shiftLyric(l, bi, 1))
-                          }
-                        />
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      disabled={!hasLyric}
+                      onClick={() =>
+                        onSelect(
+                          selected
+                            ? null
+                            : { kind: "phrase", sectionId, li, bar: bi }
+                        )
+                      }
+                      title={hasLyric ? "Select phrase to shift it" : undefined}
+                      className={`min-h-5 self-start text-[10px] font-bold ${
+                        hasLyric
+                          ? "text-slate-400 hover:text-blue-600"
+                          : "cursor-default text-slate-300"
+                      }`}
+                    >
+                      {chordLabel}
+                    </button>
                     <div className="flex min-h-6 items-center">
                       {hasLyric ? (
                         <>
@@ -167,32 +160,5 @@ export function LyricsSection({
         );
       })}
     </div>
-  );
-}
-
-/** ◀/▶ beside a selected phrase; disabled when the shift would be a no-op. */
-function ShiftButton({
-  dir,
-  line,
-  bar,
-  onShift,
-}: {
-  dir: -1 | 1;
-  line: Line;
-  bar: number;
-  onShift: () => void;
-}) {
-  const disabled = shiftLyric(line, bar, dir) === line;
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onShift}
-      title={dir === 1 ? "Shift phrase right" : "Shift phrase left"}
-      aria-label={dir === 1 ? "Shift phrase right" : "Shift phrase left"}
-      className="rounded px-1 text-[10px] font-bold text-blue-600 hover:bg-blue-100 disabled:cursor-default disabled:text-slate-300"
-    >
-      {dir === 1 ? "▶" : "◀"}
-    </button>
   );
 }
