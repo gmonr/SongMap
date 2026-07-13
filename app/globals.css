@@ -7,3 +7,11 @@
 body {
   @apply bg-slate-100 text-slate-900 antialiased;
 }
+
+/* Tap-driven editing surface: no double-tap zoom on repeated ◀ ▶ taps, and
+   no long-press text-selection / copy toolbar on Android or iOS. */
+.reshape-surface {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}

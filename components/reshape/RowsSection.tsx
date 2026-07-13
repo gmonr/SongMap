@@ -24,12 +24,14 @@ export function RowsSection({
               <div key={bi} className="flex items-stretch">
                 <BarChip bar={bar} lyric={lyricFor(line, bi)} />
                 {bi < line.bars.length - 1 && (
+                  // Slim seam, ~32px invisible hit box (wider than its layout
+                  // slot via negative margins, floating above the inert chips).
                   <button
                     type="button"
                     onClick={() => apply((lines) => splitLine(lines, li, bi + 1))}
                     title="Break row here"
                     aria-label={`Break row after bar ${bi + 1}`}
-                    className="group flex w-5 shrink-0 items-center justify-center self-stretch"
+                    className="group relative z-10 -mx-1.5 flex w-8 shrink-0 items-center justify-center self-stretch"
                   >
                     <span className="h-10 w-px bg-slate-200 transition-all group-hover:w-1 group-hover:bg-blue-400" />
                   </button>
@@ -46,7 +48,7 @@ export function RowsSection({
                 onClick={() => apply((lines) => mergeLineWithNext(lines, li))}
                 title="Merge these two rows"
                 aria-label={`Merge row ${li + 1} with row ${li + 2}`}
-                className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-slate-400 hover:border-blue-400 hover:text-blue-600"
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-400 hover:border-blue-400 hover:text-blue-600"
               >
                 merge ⤢
               </button>

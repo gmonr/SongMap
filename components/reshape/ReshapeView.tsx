@@ -2,15 +2,24 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { chordMoveTarget, moveChord } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
+import { shiftLyric } from "@/lib/song/lyrics";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
+import { lyricFor } from "./BarChip";
 import { ChordsSection } from "./ChordsSection";
 import { LyricsSection } from "./LyricsSection";
 import { ModeToggle, type ReshapeMode } from "./ModeToggle";
 import { RowsSection } from "./RowsSection";
+import { SelectionBar } from "./SelectionBar";
+
+/** What is currently picked up, across every section and mode. */
+export type ReshapeSelection =
+  | { kind: "chord"; sectionId: string; li: number; bi: number; ci: number }
+  | { kind: "phrase"; sectionId: string; li: number; bar: number };
 
 const HINTS: Record<ReshapeMode, ReactNode> = {
   rows: (
@@ -26,25 +35,28 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       Tap the gap <b className="font-semibold text-slate-600">between two words</b>{" "}
       to move the bar break there. Tap a bar&apos;s{" "}
       <b className="font-semibold text-slate-600">chord label</b> to pick up its
-      whole phrase, then ◀ ▶ to shift it a bar at a time. To move words between
-      rows, merge the rows in Rows mode first.
+      whole phrase, then ◀ ▶ in the bottom bar to shift it a bar at a time. To
+      move words between rows, merge the rows in Rows mode first.
     </>
   ),
   chords: (
     <>
       Tap a <b className="font-semibold text-slate-600">chord</b> to pick it up,
-      then ◀ ▶ to move it into the neighboring bar. An empty bar absorbs it; an
-      occupied bar becomes a split bar. Beats re-split evenly.
+      then ◀ ▶ in the bottom bar to move it into the neighboring bar. An empty
+      bar absorbs it; an occupied bar becomes a split bar. Beats re-split evenly.
     </>
   ),
 };
+
+const UNDO_LIMIT = 100;
 
 /**
  * Reshape mode: restructure a song without retyping anything, on the compact
  * song-map blocks (not the big editor boxes). Three tap-based tools — Rows
  * (break/merge row layout), Lyrics (redistribute words across bars), Chords
  * (nudge a chord into a neighboring bar) — so the interaction is identical
- * on mobile and desktop.
+ * on mobile and desktop. Selection lives here (not per section) so only one
+ * thing is ever picked up, and its actions render in the docked SelectionBar.
  */
 export function ReshapeView({
   song,
@@ -57,11 +69,27 @@ export function ReshapeView({
 }) {
   const router = useRouter();
   const [data, setData] = useState<SongData>(song.data);
-  const [mode, setMode] = useState<ReshapeMode>(initialMode);
+  const [history, setHistory] = useState<SongData[]>([]);
+  const [mode, setModeState] = useState<ReshapeMode>(initialMode);
+  const [sel, setSel] = useState<ReshapeSelection | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = data !== song.data;
   const beats = beatsPerBar(song.time_signature);
+
+  const setMode = (m: ReshapeMode) => {
+    setModeState(m);
+    setSel(null);
+  };
+
+  // Warn before the browser discards unsaved reshaping (tab close, reload,
+  // back gesture). The in-app Back link gets its own confirm below.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   // Sections in the order they first appear in the arrangement, then any that
   // aren't arranged. Each unique section is shown once (editing a shared
@@ -76,20 +104,67 @@ export function ReshapeView({
     if (!orderedIds.includes(id)) orderedIds.push(id);
   }
 
-  // Skip the state update entirely when the op no-ops (ops signal this by
-  // returning the same lines reference), so stray taps don't set `dirty`.
-  const applyToSection = (id: string, fn: (lines: Line[]) => Line[]) =>
-    setData((d) => {
-      const next = fn(d.sections[id].lines);
-      if (next === d.sections[id].lines) return d;
-      return {
-        ...d,
-        sections: {
-          ...d.sections,
-          [id]: { ...d.sections[id], lines: next },
-        },
-      };
+  // Ops signal a no-op by returning the same lines reference; skip the state
+  // update (and the undo snapshot) entirely so stray taps don't set `dirty`.
+  const applyToSection = (id: string, fn: (lines: Line[]) => Line[]) => {
+    const next = fn(data.sections[id].lines);
+    if (next === data.sections[id].lines) return;
+    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    setData({
+      ...data,
+      sections: {
+        ...data.sections,
+        [id]: { ...data.sections[id], lines: next },
+      },
     });
+  };
+
+  const undo = () => {
+    if (history.length === 0) return;
+    setSel(null);
+    setData(history[history.length - 1]);
+    setHistory(history.slice(0, -1));
+  };
+
+  // The selection's move targets, so the SelectionBar can disable dead
+  // directions and moving can keep the selection on the moved thing.
+  const selLines = sel ? data.sections[sel.sectionId]?.lines : undefined;
+
+  const canMove = (dir: -1 | 1): boolean => {
+    if (!sel || !selLines) return false;
+    if (sel.kind === "chord") {
+      return (
+        chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats) !== null
+      );
+    }
+    return shiftLyric(selLines[sel.li], sel.bar, dir) !== selLines[sel.li];
+  };
+
+  const moveSel = (dir: -1 | 1) => {
+    if (!sel || !selLines) return;
+    if (sel.kind === "chord") {
+      const target = chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats);
+      if (!target) return;
+      applyToSection(sel.sectionId, (lines) =>
+        moveChord(lines, sel.li, sel.bi, sel.ci, dir, beats)
+      );
+      setSel({ ...sel, ...target });
+    } else {
+      const next = shiftLyric(selLines[sel.li], sel.bar, dir);
+      if (next === selLines[sel.li]) return;
+      applyToSection(sel.sectionId, (lines) =>
+        lines.map((l, i) => (i === sel.li ? next : l))
+      );
+      setSel({ ...sel, bar: sel.bar + dir });
+    }
+  };
+
+  const selTitle =
+    sel && selLines
+      ? sel.kind === "chord"
+        ? selLines[sel.li]?.bars[sel.bi]?.chords[sel.ci]?.sym ?? ""
+        : lyricFor(selLines[sel.li], sel.bar) || "—"
+      : "";
 
   const save = async () => {
     setSaving(true);
@@ -109,10 +184,18 @@ export function ReshapeView({
   };
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <div className={`reshape-surface select-none space-y-4 ${sel ? "pb-24" : ""}`}>
+      <header className="sticky top-2 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="min-w-0">
-          <Link href={songHref} className="text-xs text-slate-500 hover:underline">
+          <Link
+            href={songHref}
+            onClick={(e) => {
+              if (dirty && !confirm("Discard unsaved reshaping?")) {
+                e.preventDefault();
+              }
+            }}
+            className="text-xs text-slate-500 hover:underline"
+          >
             ← Back to song map
           </Link>
           <h1 className="truncate text-xl font-bold leading-tight">
@@ -123,6 +206,15 @@ export function ReshapeView({
         <span className="flex-1" />
         <ModeToggle mode={mode} onChange={setMode} />
         {error && <p className="text-sm text-rose-600">{error}</p>}
+        <button
+          type="button"
+          onClick={undo}
+          disabled={history.length === 0}
+          title="Undo last change"
+          className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
+        >
+          ↶ Undo
+        </button>
         <button
           type="button"
           onClick={save}
@@ -160,14 +252,43 @@ export function ReshapeView({
 
             <div className="px-4 pb-4 pt-2">
               {mode === "rows" && <RowsSection def={def} apply={apply} />}
-              {mode === "lyrics" && <LyricsSection def={def} apply={apply} />}
+              {mode === "lyrics" && (
+                <LyricsSection
+                  def={def}
+                  sectionId={id}
+                  apply={apply}
+                  sel={sel}
+                  onSelect={setSel}
+                />
+              )}
               {mode === "chords" && (
-                <ChordsSection def={def} apply={apply} beats={beats} />
+                <ChordsSection
+                  def={def}
+                  sectionId={id}
+                  sel={sel}
+                  onSelect={setSel}
+                />
               )}
             </div>
           </section>
         );
       })}
+
+      {sel && (
+        <SelectionBar
+          title={selTitle}
+          subtitle={
+            sel.kind === "chord"
+              ? "Move chord into the neighboring bar"
+              : "Shift phrase a bar at a time"
+          }
+          canLeft={canMove(-1)}
+          canRight={canMove(1)}
+          moveLabel={sel.kind === "chord" ? "Move chord" : "Shift phrase"}
+          onMove={moveSel}
+          onClear={() => setSel(null)}
+        />
+      )}
     </div>
   );
 }

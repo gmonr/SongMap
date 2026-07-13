@@ -79,6 +79,12 @@ Nashville-number display.
     walk it into the neighboring bar, across row boundaries too. An empty bar
     absorbs it, an occupied bar becomes a split bar, and beats re-split
     evenly using the same rule as the importer.
+
+  Picking something up docks a **selection bar** at the bottom of the screen
+  (thumb-sized ◀ ▶, nothing reflows around the selected chip), the header
+  stays sticky with **Undo** and Save always reachable, leaving the page with
+  unsaved changes asks first, and the whole surface suppresses long-press
+  text selection and double-tap zoom so repeated taps stay fluid on phones.
 - **Tests** — `npm test` runs the [vitest](https://vitest.dev) unit tests in
   `lib/song/__tests__/` covering the data ops behind reshape: row
   split/merge, word-boundary moves, phrase shifts, and chord moves with beat
