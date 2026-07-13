@@ -77,8 +77,15 @@ Nashville-number display.
     at a time (occupied neighbors ripple into the row's first empty bar).
   - **Chords** — tap a chord (say, the stray one in a split bar), then ◀ ▶ to
     walk it into the neighboring bar, across row boundaries too. An empty bar
-    absorbs it, an occupied bar becomes a split bar, and beats re-split
-    evenly using the same rule as the importer.
+    absorbs it; an occupied bar becomes a split bar, re-split evenly using
+    the same rule as the importer, while the source bar folds the departed
+    beats into the neighboring chord so hand-tuned splits survive. The
+    selection bar also inserts a copy of the chord before/after it, deletes
+    it (beats fold into the left neighbor), and shows the bar's beats as a
+    **dot strip**: tap a gap between dots to move the beat split there, the
+    same gesture as word gaps in Lyrics mode. Empty `—` bars are tappable to
+    give them a chord, seeded from the nearest chord (which is what `—`
+    already meant).
 
   Picking something up docks a **selection bar** at the bottom of the screen
   (thumb-sized ◀ ▶, nothing reflows around the selected chip), the header
@@ -87,8 +94,8 @@ Nashville-number display.
   text selection and double-tap zoom so repeated taps stay fluid on phones.
 - **Tests** — `npm test` runs the [vitest](https://vitest.dev) unit tests in
   `lib/song/__tests__/` covering the data ops behind reshape: row
-  split/merge, word-boundary moves, phrase shifts, and chord moves with beat
-  redistribution.
+  split/merge, word-boundary moves, phrase shifts, and chord
+  move/insert/delete with beat redistribution and beat-boundary moves.
 
 ## Data model
 

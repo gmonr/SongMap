@@ -5,11 +5,11 @@ import { BarChip, lyricFor } from "./BarChip";
 import type { ReshapeSelection } from "./ReshapeView";
 
 /**
- * Chords mode: fix split bars whose chord belongs in a neighboring bar. Tap
- * a chord to pick it up; the docked SelectionBar's ◀ ▶ walk it one bar at a
- * time — across row boundaries too, since rows just partition the section's
- * bar sequence. An empty bar absorbs the chord; an occupied bar becomes a
- * split bar; beats re-split evenly. Selection follows the chord so repeated
+ * Chords mode: tap a chord (or an empty "—" bar) to pick it up; the docked
+ * SelectionBar carries the actions — ◀ ▶ walk it one bar at a time (across
+ * row boundaries too, since rows just partition the section's bar sequence),
+ * ＋ inserts a copy beside it, 🗑 deletes it, and the beat-dot strip moves
+ * the beat split inside its bar. Selection follows the chord so repeated
  * taps keep walking. Selection state lives in ReshapeView so nothing here
  * reflows when a chord is picked up.
  */
