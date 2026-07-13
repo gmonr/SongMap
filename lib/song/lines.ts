@@ -1,17 +1,17 @@
 /**
- * Structural row (Line) edits for the editor: move a bar to another row,
- * merge a row into the next, split a row in two.
+ * Structural row (Line) edits for the reshape view: merge a row into the next,
+ * or break a row in two at a bar boundary. Together these cover any row layout,
+ * since a section's bars are a fixed sequence and "rows" are just where that
+ * sequence is partitioned.
  *
- * The subtlety these all share is that `LyricSpan.bar` is a *positional index*
- * into its line's `bars` array (see lib/song/types.ts) — a lyric is glued to a
- * bar only by position, with no stable id. So any op that adds, removes, or
- * moves a bar has to re-map lyric indices in both the source and destination
- * line, or lyrics silently reattach to whatever bar lands on the old index.
- *
- * To keep that from being error-prone, every function here converts the line
- * to a *dense* `{ bar, lyric }[]` (each bar paired with its lyric text),
+ * The subtlety is that `LyricSpan.bar` is a *positional index* into its line's
+ * `bars` array (see lib/song/types.ts) — a lyric is glued to a bar only by
+ * position, with no stable id. So any op that changes how bars are grouped has
+ * to re-map lyric indices, or lyrics silently reattach to whatever bar lands on
+ * the old index. To keep that from being error-prone, each function converts a
+ * line to a *dense* `{ bar, lyric }[]` (each bar paired with its lyric text),
  * manipulates that, and converts back — so the index bookkeeping lives in one
- * place (`toDense`/`fromDense`) instead of being re-derived per operation.
+ * place (`toDense`/`fromDense`).
  */
 import type { Line } from "./types";
 
@@ -34,55 +34,6 @@ function fromDense(cells: DenseCell[]): Line {
     .map((c, i) => ({ text: c.lyric, bar: i }))
     .filter((s) => s.text !== "");
   return { bars: cells.map((c) => c.bar), lyrics };
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
-
-/**
- * Move the bar at (`li`, `bi`) to index `targetBi` in line `targetLi`, carrying
- * its lyric. `targetBi` is the destination index at the moment of insertion
- * (i.e. after the bar has been removed from its source line) and is clamped to
- * the valid range. Returns `lines` unchanged if the source bar doesn't exist.
- */
-export function moveBar(
-  lines: Line[],
-  li: number,
-  bi: number,
-  targetLi: number,
-  targetBi: number
-): Line[] {
-  if (!lines[li] || !lines[targetLi]) return lines;
-
-  if (li === targetLi) {
-    const cells = toDense(lines[li]);
-    if (bi < 0 || bi >= cells.length) return lines;
-    const [moved] = cells.splice(bi, 1);
-    cells.splice(clamp(targetBi, 0, cells.length), 0, moved);
-    return lines.map((l, i) => (i === li ? fromDense(cells) : l));
-  }
-
-  const src = toDense(lines[li]);
-  if (bi < 0 || bi >= src.length) return lines;
-  const [moved] = src.splice(bi, 1);
-  const dst = toDense(lines[targetLi]);
-  dst.splice(clamp(targetBi, 0, dst.length), 0, moved);
-  return lines.map((l, i) =>
-    i === li ? fromDense(src) : i === targetLi ? fromDense(dst) : l
-  );
-}
-
-/** Move the bar at (`li`, `bi`) to the end of the previous row. */
-export function moveBarToPrevLine(lines: Line[], li: number, bi: number): Line[] {
-  if (li <= 0 || !lines[li - 1]) return lines;
-  return moveBar(lines, li, bi, li - 1, lines[li - 1].bars.length);
-}
-
-/** Move the bar at (`li`, `bi`) to the start of the next row. */
-export function moveBarToNextLine(lines: Line[], li: number, bi: number): Line[] {
-  if (li >= lines.length - 1) return lines;
-  return moveBar(lines, li, bi, li + 1, 0);
 }
 
 /**

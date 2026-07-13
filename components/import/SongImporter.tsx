@@ -202,8 +202,9 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
               Preview
             </h2>
             <p className="text-xs text-slate-400">
-              Each chord change became one bar — after creating, fix bar counts
-              and reshape rows (move/merge/split bars) in the editor.
+              Each chord change became one bar and each source line a row —
+              after creating, you&apos;ll land in reshape mode to merge/break
+              rows.
             </p>
           </div>
           <SongMap key={effectiveKey + timeSignature} song={previewSong} />

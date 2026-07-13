@@ -2,16 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { SECTION_COLOR_NAMES, sectionColor } from "@/lib/song/colors";
 import { KEYS, parseKey } from "@/lib/song/theory";
-import {
-  mergeLineWithNext,
-  moveBar,
-  moveBarToNextLine,
-  moveBarToPrevLine,
-  splitLine,
-} from "@/lib/song/lines";
 import {
   beatsPerBar,
   type Bar,
@@ -50,15 +43,6 @@ function BarEditor({
   onChange,
   onLyricChange,
   onRemove,
-  canMovePrev,
-  canMoveNext,
-  onMovePrev,
-  onMoveNext,
-  onDragStartBar,
-  onDragEndBar,
-  onDragOverBar,
-  onDropBar,
-  isDropTarget,
 }: {
   bar: Bar;
   lyric: string;
@@ -66,17 +50,6 @@ function BarEditor({
   onChange: (bar: Bar) => void;
   onLyricChange: (text: string) => void;
   onRemove: () => void;
-  /** Move this bar up to the end of the previous row. */
-  canMovePrev: boolean;
-  canMoveNext: boolean;
-  onMovePrev: () => void;
-  onMoveNext: () => void;
-  /** Native-drag hooks (desktop); a bar is a drop target for another bar. */
-  onDragStartBar: () => void;
-  onDragEndBar: () => void;
-  onDragOverBar: () => void;
-  onDropBar: () => void;
-  isDropTarget: boolean;
 }) {
   const setChord = (i: number, patch: Partial<Bar["chords"][number]>) => {
     const chords = bar.chords.map((c, j) => (j === i ? { ...c, ...patch } : c));
@@ -103,66 +76,15 @@ function BarEditor({
     onChange({ ...bar, chords });
   };
 
-  const moveBtn = (enabled: boolean) =>
-    `leading-none ${
-      enabled
-        ? "text-slate-400 hover:text-blue-600"
-        : "cursor-not-allowed text-slate-200"
-    }`;
-
   return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOverBar();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDropBar();
-      }}
-      className={`flex w-40 shrink-0 flex-col gap-1 rounded-md border bg-white p-2 ${
-        isDropTarget ? "border-blue-400 ring-2 ring-blue-200" : "border-slate-200"
-      }`}
-    >
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-400">
-        <span
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", "bar");
-            onDragStartBar();
-          }}
-          onDragEnd={onDragEndBar}
-          title="Drag to another row"
-          className="cursor-grab select-none text-sm text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-        >
-          ⠿
-        </span>
-        <span>bar</span>
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={onMovePrev}
-          disabled={!canMovePrev}
-          title="Move to previous row"
-          className={moveBtn(canMovePrev)}
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          onClick={onMoveNext}
-          disabled={!canMoveNext}
-          title="Move to next row"
-          className={moveBtn(canMoveNext)}
-        >
-          ↓
-        </button>
+    <div className="flex w-40 shrink-0 flex-col gap-1 rounded-md border border-slate-200 bg-white p-2">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-400">
+        bar
         <button
           type="button"
           onClick={onRemove}
           title="Remove bar"
-          className="leading-none text-slate-400 hover:text-rose-600"
+          className="text-slate-400 hover:text-rose-600"
         >
           ✕
         </button>
@@ -234,43 +156,11 @@ function SectionEditor({
 }) {
   const color = sectionColor(def.color);
 
-  // Native-drag bookkeeping: which bar is being dragged, which is hovered.
-  const [drag, setDrag] = useState<{ li: number; bi: number } | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ li: number; bi: number } | null>(
-    null
-  );
-
-  const setLines = (lines: Line[]) => onChange({ ...def, lines });
-
   const setLine = (li: number, line: Line) =>
     onChange({
       ...def,
       lines: def.lines.map((l, i) => (i === li ? line : l)),
     });
-
-  const endDrag = () => {
-    setDrag(null);
-    setDropTarget(null);
-  };
-
-  // Drop the dragged bar just before the (targetLi, targetBi) bar. Within the
-  // same line, account for the source bar being removed first.
-  const dropOnBar = (targetLi: number, targetBi: number) => {
-    if (!drag) return;
-    let target = targetBi;
-    if (drag.li === targetLi && drag.bi < targetBi) target -= 1;
-    setLines(moveBar(def.lines, drag.li, drag.bi, targetLi, target));
-    endDrag();
-  };
-
-  // Drop onto a row's trailing zone: append to the end of that row.
-  const dropOnRowEnd = (targetLi: number) => {
-    if (!drag) return;
-    setLines(
-      moveBar(def.lines, drag.li, drag.bi, targetLi, def.lines[targetLi].bars.length)
-    );
-    endDrag();
-  };
 
   const lyricFor = (line: Line, barIdx: number) =>
     line.lyrics.find((s) => s.bar === barIdx)?.text ?? "";
@@ -338,89 +228,43 @@ function SectionEditor({
           <div key={li} className="rounded-lg bg-white/60 p-2">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {line.bars.map((bar, bi) => (
-                <Fragment key={bi}>
-                  <BarEditor
-                    bar={bar}
-                    lyric={lyricFor(line, bi)}
-                    maxBeats={beats}
-                    onChange={(b) =>
-                      setLine(li, {
-                        ...line,
-                        bars: line.bars.map((x, i) => (i === bi ? b : x)),
-                      })
-                    }
-                    onLyricChange={(text) => setLyric(li, bi, text)}
-                    onRemove={() => removeBar(li, bi)}
-                    canMovePrev={li > 0}
-                    canMoveNext={li < def.lines.length - 1}
-                    onMovePrev={() => setLines(moveBarToPrevLine(def.lines, li, bi))}
-                    onMoveNext={() => setLines(moveBarToNextLine(def.lines, li, bi))}
-                    onDragStartBar={() => setDrag({ li, bi })}
-                    onDragEndBar={endDrag}
-                    onDragOverBar={() =>
-                      setDropTarget((prev) =>
-                        prev?.li === li && prev?.bi === bi ? prev : { li, bi }
-                      )
-                    }
-                    onDropBar={() => dropOnBar(li, bi)}
-                    isDropTarget={
-                      !!drag && dropTarget?.li === li && dropTarget?.bi === bi
-                    }
-                  />
-                  {bi < line.bars.length - 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setLines(splitLine(def.lines, li, bi + 1))}
-                      title="Split row here"
-                      aria-label={`Split row after bar ${bi + 1}`}
-                      className="group flex shrink-0 items-stretch px-1"
-                    >
-                      <span className="w-px self-stretch bg-slate-200 group-hover:w-0.5 group-hover:bg-blue-400" />
-                    </button>
-                  )}
-                </Fragment>
+                <BarEditor
+                  key={bi}
+                  bar={bar}
+                  lyric={lyricFor(line, bi)}
+                  maxBeats={beats}
+                  onChange={(b) =>
+                    setLine(li, {
+                      ...line,
+                      bars: line.bars.map((x, i) => (i === bi ? b : x)),
+                    })
+                  }
+                  onLyricChange={(text) => setLyric(li, bi, text)}
+                  onRemove={() => removeBar(li, bi)}
+                />
               ))}
               <button
                 type="button"
                 onClick={() =>
                   setLine(li, { ...line, bars: [...line.bars, newBar(beats)] })
                 }
-                onDragOver={(e) => {
-                  if (drag) e.preventDefault();
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  dropOnRowEnd(li);
-                }}
                 className="shrink-0 self-stretch rounded-md border border-dashed border-slate-300 px-3 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600"
               >
                 + bar
               </button>
             </div>
-            <div className="mt-1 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...def,
-                    lines: def.lines.filter((_, i) => i !== li),
-                  })
-                }
-                className="text-xs text-slate-400 hover:text-rose-600"
-              >
-                remove line
-              </button>
-              {li < def.lines.length - 1 && (
-                <button
-                  type="button"
-                  onClick={() => setLines(mergeLineWithNext(def.lines, li))}
-                  title="Merge this row with the one below"
-                  className="text-xs text-slate-400 hover:text-blue-600"
-                >
-                  merge ↓
-                </button>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                onChange({
+                  ...def,
+                  lines: def.lines.filter((_, i) => i !== li),
+                })
+              }
+              className="mt-1 text-xs text-slate-400 hover:text-rose-600"
+            >
+              remove line
+            </button>
           </div>
         ))}
         <button
