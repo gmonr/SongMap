@@ -13,7 +13,7 @@ selection, no double-tap zoom), docked `SelectionBar` (zero layout shift,
 44px targets), wide invisible hit boxes on gap/seam buttons, undo stack,
 unsaved-changes guard, sticky header, growable split-bar chips.
 
-## P1 — Chord completeness (Chords mode)
+## P1 (done) — Chord completeness (Chords mode)
 
 Solves: can't insert a chord (including at the start of a line), can't delete
 a chord, can't control beat distribution (3 chords in 4/4 are forced to
@@ -35,6 +35,13 @@ a chord, can't control beat distribution (3 chords in 4/4 are forced to
   move it" gesture as word gaps. No numbers, no dialogs.
 - Empty bars (`—`) become tappable to select-and-add.
 - Tests in `lib/song/__tests__/chords.test.ts` (existing pattern).
+
+Shipped notes: taps never type, so inserted chords seed their symbol from
+context — "+ before/after" copies the selected chord, and adding to an empty
+bar uses the nearest chord in reading order (which is what `—` already
+meant); renaming is P2's ✎. Moves preserve the *source* bar's splits (the
+moved chord's beats fold into its neighbor, mirroring delete); an occupied
+*destination* bar still re-splits evenly.
 
 ## P2 — Small text edits (direction approved)
 

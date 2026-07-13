@@ -3,13 +3,21 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { chordMoveTarget, moveChord } from "@/lib/song/chords";
+import {
+  chordMoveTarget,
+  deleteChord,
+  insertChord,
+  moveChord,
+  nearestChordSym,
+  setBeatBoundary,
+} from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
 import { shiftLyric } from "@/lib/song/lyrics";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
 import { lyricFor } from "./BarChip";
+import { BeatDots } from "./BeatDots";
 import { ChordsSection } from "./ChordsSection";
 import { LyricsSection } from "./LyricsSection";
 import { ModeToggle, type ReshapeMode } from "./ModeToggle";
@@ -41,9 +49,14 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
   ),
   chords: (
     <>
-      Tap a <b className="font-semibold text-slate-600">chord</b> to pick it up,
-      then ◀ ▶ in the bottom bar to move it into the neighboring bar. An empty
-      bar absorbs it; an occupied bar becomes a split bar. Beats re-split evenly.
+      Tap a <b className="font-semibold text-slate-600">chord</b> to pick it up:
+      ◀ ▶ moves it into the neighboring bar,{" "}
+      <b className="font-semibold text-slate-600">＋ before / after</b> adds a
+      copy beside it, <b className="font-semibold text-slate-600">🗑</b> deletes
+      it, and tapping a gap in the{" "}
+      <b className="font-semibold text-slate-600">beat dots</b> moves the beat
+      split. Empty <b className="font-semibold text-slate-600">—</b> bars are
+      tappable to give them a chord.
     </>
   ),
 };
@@ -129,6 +142,10 @@ export function ReshapeView({
   // The selection's move targets, so the SelectionBar can disable dead
   // directions and moving can keep the selection on the moved thing.
   const selLines = sel ? data.sections[sel.sectionId]?.lines : undefined;
+  const selBar =
+    sel?.kind === "chord" ? selLines?.[sel.li]?.bars[sel.bi] : undefined;
+  const selIsEmptyBar =
+    !!selBar && selBar.chords.length === 1 && selBar.chords[0].sym === "";
 
   const canMove = (dir: -1 | 1): boolean => {
     if (!sel || !selLines) return false;
@@ -162,9 +179,101 @@ export function ReshapeView({
   const selTitle =
     sel && selLines
       ? sel.kind === "chord"
-        ? selLines[sel.li]?.bars[sel.bi]?.chords[sel.ci]?.sym ?? ""
+        ? selLines[sel.li]?.bars[sel.bi]?.chords[sel.ci]?.sym || "—"
         : lyricFor(selLines[sel.li], sel.bar) || "—"
       : "";
+
+  // Chord tools (P1). Taps never type, so inserts seed their symbol from
+  // context — a copy of the selected chord, or, for an empty "—" bar, the
+  // nearest chord (what "same as before" already meant); renaming is P2's ✎.
+  const insertSym =
+    sel?.kind === "chord" && selBar && selLines
+      ? selIsEmptyBar
+        ? nearestChordSym(selLines, sel.li, sel.bi)
+        : selBar.chords[sel.ci]?.sym ?? null
+      : null;
+  const canInsert =
+    !!insertSym && (selIsEmptyBar || (selBar?.chords.length ?? 0) < beats);
+
+  const insertSel = (side: 0 | 1) => {
+    if (sel?.kind !== "chord" || !insertSym) return;
+    const at = selIsEmptyBar ? 0 : sel.ci + side;
+    applyToSection(sel.sectionId, (lines) =>
+      insertChord(lines, sel.li, sel.bi, at, insertSym, beats)
+    );
+    setSel({ ...sel, ci: at });
+  };
+
+  const deleteSel = () => {
+    if (sel?.kind !== "chord") return;
+    applyToSection(sel.sectionId, (lines) =>
+      deleteChord(lines, sel.li, sel.bi, sel.ci)
+    );
+    setSel(null);
+  };
+
+  const setBoundary = (ci: number, chordBeats: number) => {
+    if (sel?.kind !== "chord") return;
+    applyToSection(sel.sectionId, (lines) => {
+      const barHere = lines[sel.li]?.bars[sel.bi];
+      if (!barHere) return lines;
+      const next = setBeatBoundary(barHere, ci, chordBeats);
+      if (next === barHere) return lines;
+      return lines.map((l, i) =>
+        i === sel.li
+          ? { ...l, bars: l.bars.map((b, j) => (j === sel.bi ? next : b)) }
+          : l
+      );
+    });
+  };
+
+  const toolBtnCls =
+    "flex h-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-200 active:bg-slate-300 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-300";
+
+  const chordTools =
+    sel?.kind === "chord" && selBar ? (
+      selIsEmptyBar ? (
+        <button
+          type="button"
+          disabled={!canInsert}
+          onClick={() => insertSel(0)}
+          className={toolBtnCls}
+        >
+          ＋ chord{insertSym ? ` (${insertSym})` : ""}
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            disabled={!canInsert}
+            onClick={() => insertSel(0)}
+            aria-label="Add a copy of this chord before it"
+            className={toolBtnCls}
+          >
+            ＋ before
+          </button>
+          <BeatDots bar={selBar} onSet={setBoundary} />
+          <button
+            type="button"
+            disabled={!canInsert}
+            onClick={() => insertSel(1)}
+            aria-label="Add a copy of this chord after it"
+            className={toolBtnCls}
+          >
+            ＋ after
+          </button>
+          <button
+            type="button"
+            onClick={deleteSel}
+            aria-label="Delete chord"
+            title="Delete chord"
+            className={`${toolBtnCls} w-11 px-0 text-sm`}
+          >
+            🗑
+          </button>
+        </>
+      )
+    ) : undefined;
 
   const save = async () => {
     setSaving(true);
@@ -184,7 +293,11 @@ export function ReshapeView({
   };
 
   return (
-    <div className={`reshape-surface select-none space-y-4 ${sel ? "pb-24" : ""}`}>
+    <div
+      className={`reshape-surface select-none space-y-4 ${
+        sel ? (sel.kind === "chord" ? "pb-36" : "pb-24") : ""
+      }`}
+    >
       <header className="sticky top-2 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="min-w-0">
           <Link
@@ -279,7 +392,9 @@ export function ReshapeView({
           title={selTitle}
           subtitle={
             sel.kind === "chord"
-              ? "Move chord into the neighboring bar"
+              ? selIsEmptyBar
+                ? "Empty bar — ＋ gives it a chord"
+                : "Move chord into the neighboring bar"
               : "Shift phrase a bar at a time"
           }
           canLeft={canMove(-1)}
@@ -287,6 +402,7 @@ export function ReshapeView({
           moveLabel={sel.kind === "chord" ? "Move chord" : "Shift phrase"}
           onMove={moveSel}
           onClear={() => setSel(null)}
+          tools={chordTools}
         />
       )}
     </div>

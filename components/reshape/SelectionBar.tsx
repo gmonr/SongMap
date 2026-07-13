@@ -1,11 +1,14 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 /**
  * The docked action bar for the current reshape selection. Rendered fixed at
  * the bottom of the viewport (instead of inline beside the selected chip) so
  * picking something up never reflows the bars under the user's finger, and
- * the ◀ ▶ targets are full thumb-sized. One bar serves every mode; it grows
- * more actions (edit, delete, beat dots) in later phases.
+ * the ◀ ▶ targets are full thumb-sized. One bar serves every mode; modes
+ * with more than move/clear (Chords: insert, delete, beat dots) pass their
+ * extra actions as a second `tools` row.
  */
 export function SelectionBar({
   title,
@@ -15,6 +18,7 @@ export function SelectionBar({
   moveLabel,
   onMove,
   onClear,
+  tools,
 }: {
   /** What is picked up, e.g. the chord symbol or the lyric phrase. */
   title: string;
@@ -26,6 +30,8 @@ export function SelectionBar({
   moveLabel: string;
   onMove: (dir: -1 | 1) => void;
   onClear: () => void;
+  /** Optional second row of mode-specific actions. */
+  tools?: ReactNode;
 }) {
   const arrowCls =
     "flex h-11 w-14 items-center justify-center rounded-lg bg-blue-50 text-lg font-bold text-blue-600 hover:bg-blue-100 active:bg-blue-200 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-300";
@@ -63,6 +69,11 @@ export function SelectionBar({
           ✕
         </button>
       </div>
+      {tools && (
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 pb-2">
+          {tools}
+        </div>
+      )}
     </div>
   );
 }
