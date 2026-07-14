@@ -1,45 +1,24 @@
 "use client";
 
-import {
-  lineWordLayout,
-  setWordBoundary,
-  type WordLayout,
-} from "@/lib/song/lyrics";
+import { lineWordLayout, setWordBoundary } from "@/lib/song/lyrics";
 import type { Line, SectionDef } from "@/lib/song/types";
 import type { ReshapeSelection } from "./ReshapeView";
 
 /**
- * Which boundary a tap at global word position `gap` (inside bar `bi`'s word
- * group) should move there: the nearer of the bar's two edges that would
- * actually change (tie → left). Null means the tap would be a pure no-op, so
- * no button is rendered at that position.
- */
-function boundaryFor(
-  layout: WordLayout,
-  bi: number,
-  gap: number
-): number | null {
-  const candidates: number[] = [];
-  if (bi > 0) candidates.push(bi);
-  if (bi < layout.bars.length - 1) candidates.push(bi + 1);
-  const moved = candidates.filter((b) => layout.bars[b].start !== gap);
-  if (moved.length === 0) return null;
-  moved.sort(
-    (a, b) =>
-      Math.abs(layout.bars[a].start - gap) -
-        Math.abs(layout.bars[b].start - gap) || a - b
-  );
-  return moved[0];
-}
-
-/**
  * Lyrics mode: redistribute a row's words across its bars without retyping.
- * Each bar shows its chord(s) above its words; tapping the slim gap between
- * two words moves the nearest bar break there. Tapping a bar's chord header
- * selects its whole phrase; the docked SelectionBar's ◀ ▶ shift it a bar at
- * a time (occupied neighbors ripple into the row's first empty bar). Word
- * moves are row-local: to move words between rows, merge the rows in Rows
- * mode first.
+ * Each bar shows its chord(s) above its words. Two selectable things:
+ *
+ * - The │ break between two bars: tap to pick it up, then ◀ ▶ in the docked
+ *   SelectionBar move it one word at a time, or tap one of the word gaps
+ *   that light up (only the two bars the break sits between) to place it
+ *   there exactly. One break, one explicit target — a gap tap can never
+ *   surprise by folding words the other way.
+ * - A bar's chord header: tap to pick up its whole phrase; ◀ ▶ shift it a
+ *   bar at a time (occupied neighbors ripple into the row's first empty
+ *   bar) and ✎ retypes its words.
+ *
+ * Word moves are row-local: to move words between rows, merge the rows in
+ * Rows mode first.
  */
 export function LyricsSection({
   def,
@@ -66,25 +45,32 @@ export function LyricsSection({
     <div className="space-y-2">
       {def.lines.map((line, li) => {
         const layout = lineWordLayout(line);
+        const selBreak =
+          sel?.kind === "break" && sel.sectionId === sectionId && sel.li === li
+            ? sel.boundary
+            : null;
 
-        // Slim 1px seam with a ~24px invisible hit box: the button is wider
-        // than the layout space it takes (negative margins), floating above
-        // the inert word chips beside it so mis-taps still land on it.
+        // Placement slots for the picked-up break: every word gap in the two
+        // bars it sits between, except where it already is. Slim 1px seam
+        // with a ~24px invisible hit box (wider than its layout space via
+        // negative margins, floating above the inert word chips beside it).
         const gapButton = (bi: number, gapInBar: number) => {
+          if (selBreak === null || (bi !== selBreak - 1 && bi !== selBreak)) {
+            return null;
+          }
           const gap = layout.bars[bi].start + gapInBar;
-          const boundary = boundaryFor(layout, bi, gap);
-          if (boundary === null) return null;
+          if (gap === layout.bars[selBreak].start) return null;
           return (
             <button
               type="button"
               onClick={() =>
-                applyToLine(li, (l) => setWordBoundary(l, boundary, gap))
+                applyToLine(li, (l) => setWordBoundary(l, selBreak, gap))
               }
-              title="Move bar break here"
-              aria-label="Move bar break here"
+              title="Move the bar break here"
+              aria-label="Move the bar break here"
               className="group relative z-10 -mx-1.5 flex w-6 shrink-0 items-center justify-center self-stretch"
             >
-              <span className="h-4 w-px bg-slate-200 transition-all group-hover:w-1 group-hover:bg-blue-400" />
+              <span className="h-4 w-px bg-blue-300 transition-all group-hover:w-1 group-hover:bg-blue-400" />
             </button>
           );
         };
@@ -106,10 +92,30 @@ export function LyricsSection({
               return (
                 <div key={bi} className="flex max-w-full items-stretch">
                   {bi > 0 && (
-                    <span
-                      className="mx-0.5 w-0.5 shrink-0 self-stretch rounded bg-slate-300"
-                      aria-hidden
-                    />
+                    // The bar break itself: a tap target with a ~24px
+                    // invisible hit box around the slim visible divider.
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSelect(
+                          selBreak === bi
+                            ? null
+                            : { kind: "break", sectionId, li, boundary: bi }
+                        )
+                      }
+                      title="Pick up this bar break"
+                      aria-label={`Pick up the bar break before bar ${bi + 1}`}
+                      aria-pressed={selBreak === bi}
+                      className="group relative z-10 -mx-1 flex w-6 shrink-0 justify-center self-stretch"
+                    >
+                      <span
+                        className={`self-stretch rounded transition-all ${
+                          selBreak === bi
+                            ? "w-1 bg-blue-500"
+                            : "w-0.5 bg-slate-300 group-hover:bg-blue-400"
+                        }`}
+                      />
+                    </button>
                   )}
                   <div
                     className={`flex min-w-0 flex-col gap-0.5 rounded-md px-1 py-0.5 ${
