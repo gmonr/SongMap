@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  barIndexAt,
   buildTimeline,
   firstBarOfItem,
   sectionLoopRange,
@@ -134,5 +135,21 @@ describe("firstBarOfItem", () => {
     const t = buildTimeline(song());
     expect(firstBarOfItem(t, 0)).toBe(0);
     expect(firstBarOfItem(t, 1)).toBe(2);
+  });
+});
+
+describe("barIndexAt", () => {
+  it("maps section-relative bar coordinates to a timeline index", () => {
+    const t = buildTimeline(song());
+    expect(barIndexAt(t, 0, 0, 0)).toBe(0);
+    expect(barIndexAt(t, 0, 0, 1)).toBe(1);
+    expect(barIndexAt(t, 1, 0, 0)).toBe(2);
+  });
+
+  it("targets the first repeat pass and rejects unknown coordinates", () => {
+    const t = buildTimeline(song());
+    expect(t.bars[barIndexAt(t, 1, 0, 0)].pass).toBe(0);
+    expect(barIndexAt(t, 0, 0, 9)).toBe(-1);
+    expect(barIndexAt(t, 5, 0, 0)).toBe(-1);
   });
 });

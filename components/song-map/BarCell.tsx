@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import type { Bar } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
+import { ChordSym } from "./ChordSym";
 
 function BeatDots({ count }: { count: number }) {
   return (
@@ -38,6 +39,7 @@ export function BarCell({
   onReveal,
   flash = false,
   playhead = false,
+  onChordTap,
 }: {
   bar: Bar;
   lyric?: string;
@@ -52,6 +54,11 @@ export function BarCell({
   flash?: boolean;
   /** Playback: this bar is sounding right now. */
   playhead?: boolean;
+  /**
+   * Playback: start playing from chord `ci` of this bar. When given, chord
+   * taps seek playback instead of opening the piano-diagram popover.
+   */
+  onChordTap?: (ci: number) => void;
 }) {
   const flashRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -105,13 +112,31 @@ export function BarCell({
             className="flex min-w-0 flex-col items-center justify-between gap-0.5"
             style={{ flexGrow: Math.max(chord.beats, 1) }}
           >
-            <ChordPopover
-              sym={chord.sym}
-              songKey={songKey}
-              displayKey={displayKey}
-              notation={notation}
-              className="truncate text-sm font-bold sm:text-base"
-            />
+            {onChordTap ? (
+              <button
+                type="button"
+                onClick={() => onChordTap(i)}
+                aria-label={`Play from ${chord.sym.trim() || "this bar"}`}
+                title="Play from here"
+                className="m-0 inline-flex cursor-pointer border-0 bg-transparent p-0 leading-none"
+              >
+                <ChordSym
+                  sym={chord.sym}
+                  songKey={songKey}
+                  displayKey={displayKey}
+                  notation={notation}
+                  className="truncate text-sm font-bold sm:text-base"
+                />
+              </button>
+            ) : (
+              <ChordPopover
+                sym={chord.sym}
+                songKey={songKey}
+                displayKey={displayKey}
+                notation={notation}
+                className="truncate text-sm font-bold sm:text-base"
+              />
+            )}
             <BeatDots count={Math.max(chord.beats, 1)} />
           </div>
         ))}

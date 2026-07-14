@@ -25,6 +25,7 @@ export function SectionCard({
   focusBar,
   playheadBar,
   onPlayFromHere,
+  onChordTap,
 }: {
   def: SectionDef;
   item: ArrangementItem;
@@ -43,6 +44,8 @@ export function SectionCard({
   playheadBar?: { li: number; bi: number };
   /** Playback: start playing from this instance's first bar. */
   onPlayFromHere?: () => void;
+  /** Playback: start playing from a tapped chord (replaces the popover). */
+  onChordTap?: (li: number, bi: number, ci: number) => void;
 }) {
   const [expanded, setExpanded] = useState(!item.sameChordsAs || !!focusBar);
   const color = sectionColor(def.color);
@@ -143,6 +146,9 @@ export function SectionCard({
                       !!playheadBar &&
                       li === playheadBar.li &&
                       bi === playheadBar.bi
+                    }
+                    onChordTap={
+                      onChordTap ? (ci) => onChordTap(li, bi, ci) : undefined
                     }
                   />
                 ))}

@@ -58,9 +58,10 @@ Nashville-number display.
   - **Shuffled sections** — steps through the arrangement's sections one at
     a time in a randomized order, to practice recall without leaning on the
     song's usual sequence. "Reshuffle" draws a new order.
-- **Chord-diagram popovers** — click any chord symbol (song map or practice
-  view) to see its notes on a piano keyboard, root highlighted; closes on
-  outside click or Escape.
+- **Chord-diagram popovers** — click any chord symbol in the practice view
+  to see its notes on a piano keyboard, root highlighted; closes on outside
+  click or Escape. (On the song map itself, chord taps start playback —
+  see Phase 5.)
 
 ## Features (Phase 4)
 
@@ -110,6 +111,11 @@ Nashville-number display.
   selection bar): play/pause, stop, previous/next section, and a live
   section + bar readout. Every section card also gets a ▶ to start playback
   from that section.
+- **Tap a chord to play from it** — on the song map, tapping any chord
+  symbol starts playback right there (opening the transport if needed);
+  tapping the second chord of a split bar enters the bar at that chord's
+  beat. This replaces the song map's piano-diagram popovers, which now
+  live in the practice view only.
 - **Practice knobs** — live tempo control (± around the song's ♩, with
   reset), loop **off / section / song** (section loops include all repeat
   passes), a one-bar count-in toggle, and independent click / chords mutes —
