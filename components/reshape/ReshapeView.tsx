@@ -13,6 +13,7 @@ import {
   setBeatBoundary,
 } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
+import { deleteBar, insertBar } from "@/lib/song/lines";
 import { setBarLyric, shiftLyric } from "@/lib/song/lyrics";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
@@ -28,7 +29,8 @@ import { SelectionBar } from "./SelectionBar";
 /** What is currently picked up, across every section and mode. */
 export type ReshapeSelection =
   | { kind: "chord"; sectionId: string; li: number; bi: number; ci: number }
-  | { kind: "phrase"; sectionId: string; li: number; bar: number };
+  | { kind: "phrase"; sectionId: string; li: number; bar: number }
+  | { kind: "bar"; sectionId: string; li: number; bi: number };
 
 const HINTS: Record<ReshapeMode, ReactNode> = {
   rows: (
@@ -36,7 +38,12 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       Tap the seam <b className="font-semibold text-slate-600">between two bars</b>{" "}
       to break a row there. Tap a{" "}
       <b className="font-semibold text-slate-600">merge</b> seam between two rows
-      to join them back. Lyrics stay with their bar.
+      to join them back. Tap a{" "}
+      <b className="font-semibold text-slate-600">bar</b> to pick it up, then{" "}
+      <b className="font-semibold text-slate-600">＋ bar before / after</b> adds
+      an empty — bar beside it and{" "}
+      <b className="font-semibold text-slate-600">🗑</b> deletes it (its words
+      join the bar before). Lyrics stay with their bar.
     </>
   ),
   lyrics: (
@@ -69,8 +76,8 @@ const UNDO_LIMIT = 100;
 /**
  * Reshape mode: restructure a song without retyping anything, on the compact
  * song-map blocks (not the big editor boxes). Three tap-based tools — Rows
- * (break/merge row layout), Lyrics (redistribute words across bars), Chords
- * (nudge a chord into a neighboring bar) — so the interaction is identical
+ * (break/merge row layout, add/remove bars), Lyrics (redistribute words
+ * across bars), Chords (nudge a chord into a neighboring bar) — identical
  * on mobile and desktop. Selection lives here (not per section) so only one
  * thing is ever picked up, and its actions render in the docked SelectionBar.
  */
@@ -143,15 +150,18 @@ export function ReshapeView({
   };
 
   // The selection's move targets, so the SelectionBar can disable dead
-  // directions and moving can keep the selection on the moved thing.
+  // directions and moving can keep the selection on the moved thing. Bar
+  // selections (Rows mode) have no move gesture at all.
   const selLines = sel ? data.sections[sel.sectionId]?.lines : undefined;
   const selBar =
-    sel?.kind === "chord" ? selLines?.[sel.li]?.bars[sel.bi] : undefined;
+    sel?.kind === "chord" || sel?.kind === "bar"
+      ? selLines?.[sel.li]?.bars[sel.bi]
+      : undefined;
   const selIsEmptyBar =
     !!selBar && selBar.chords.length === 1 && selBar.chords[0].sym === "";
 
   const canMove = (dir: -1 | 1): boolean => {
-    if (!sel || !selLines) return false;
+    if (!sel || !selLines || sel.kind === "bar") return false;
     if (sel.kind === "chord") {
       return (
         chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats) !== null
@@ -161,7 +171,7 @@ export function ReshapeView({
   };
 
   const moveSel = (dir: -1 | 1) => {
-    if (!sel || !selLines) return;
+    if (!sel || !selLines || sel.kind === "bar") return;
     if (sel.kind === "chord") {
       const target = chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats);
       if (!target) return;
@@ -183,7 +193,9 @@ export function ReshapeView({
     sel && selLines
       ? sel.kind === "chord"
         ? selLines[sel.li]?.bars[sel.bi]?.chords[sel.ci]?.sym || "—"
-        : lyricFor(selLines[sel.li], sel.bar) || "—"
+        : sel.kind === "bar"
+          ? selBar?.chords.map((c) => c.sym).filter(Boolean).join(" ") || "—"
+          : lyricFor(selLines[sel.li], sel.bar) || "—"
       : "";
 
   // Chord tools (P1). Taps never type, so inserts seed their symbol from
@@ -225,7 +237,7 @@ export function ReshapeView({
       applyToSection(sel.sectionId, (lines) =>
         renameChord(lines, sel.li, sel.bi, sel.ci, text)
       );
-    } else {
+    } else if (sel.kind === "phrase") {
       applyToSection(sel.sectionId, (lines) => {
         const next = setBarLyric(lines[sel.li], sel.bar, text);
         return next === lines[sel.li]
@@ -246,12 +258,14 @@ export function ReshapeView({
               label: "Edit chord",
               onSubmit: editSel,
             }
-        : {
-            value: lyricFor(selLines[sel.li], sel.bar),
-            label: "Edit lyric",
-            onSubmit: editSel,
-            allowEmpty: true,
-          }
+        : sel.kind === "phrase"
+          ? {
+              value: lyricFor(selLines[sel.li], sel.bar),
+              label: "Edit lyric",
+              onSubmit: editSel,
+              allowEmpty: true,
+            }
+          : undefined
       : undefined;
 
   const setBoundary = (ci: number, chordBeats: number) => {
@@ -267,6 +281,25 @@ export function ReshapeView({
           : l
       );
     });
+  };
+
+  // Bar tools (P3, Rows mode): add an empty "—" bar beside the selected bar
+  // or delete it — for when the import guessed a row's bar count wrong.
+  // Inserting keeps the selection on the new bar (mirroring chord inserts);
+  // deleting drops it.
+  const insertBarSel = (side: 0 | 1) => {
+    if (sel?.kind !== "bar") return;
+    const at = sel.bi + side;
+    applyToSection(sel.sectionId, (lines) =>
+      insertBar(lines, sel.li, at, beats)
+    );
+    setSel({ ...sel, bi: at });
+  };
+
+  const deleteBarSel = () => {
+    if (sel?.kind !== "bar") return;
+    applyToSection(sel.sectionId, (lines) => deleteBar(lines, sel.li, sel.bi));
+    setSel(null);
   };
 
   const toolBtnCls =
@@ -317,6 +350,38 @@ export function ReshapeView({
       )
     ) : undefined;
 
+  const barTools =
+    sel?.kind === "bar" ? (
+      <>
+        <button
+          type="button"
+          onClick={() => insertBarSel(0)}
+          aria-label="Add an empty bar before this one"
+          className={toolBtnCls}
+        >
+          ＋ bar before
+        </button>
+        <button
+          type="button"
+          onClick={() => insertBarSel(1)}
+          aria-label="Add an empty bar after this one"
+          className={toolBtnCls}
+        >
+          ＋ bar after
+        </button>
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={deleteBarSel}
+          aria-label="Delete bar"
+          title="Delete bar"
+          className={`${toolBtnCls} w-11 px-0 text-sm`}
+        >
+          🗑
+        </button>
+      </>
+    ) : undefined;
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -337,7 +402,7 @@ export function ReshapeView({
   return (
     <div
       className={`reshape-surface select-none space-y-4 ${
-        sel ? (sel.kind === "chord" ? "pb-36" : "pb-24") : ""
+        sel ? (sel.kind === "phrase" ? "pb-24" : "pb-36") : ""
       }`}
     >
       <header className="sticky top-2 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
@@ -406,7 +471,15 @@ export function ReshapeView({
             </div>
 
             <div className="px-4 pb-4 pt-2">
-              {mode === "rows" && <RowsSection def={def} apply={apply} />}
+              {mode === "rows" && (
+                <RowsSection
+                  def={def}
+                  sectionId={id}
+                  apply={apply}
+                  sel={sel}
+                  onSelect={setSel}
+                />
+              )}
               {mode === "lyrics" && (
                 <LyricsSection
                   def={def}
@@ -436,7 +509,9 @@ export function ReshapeView({
           key={
             sel.kind === "chord"
               ? `c:${sel.sectionId}:${sel.li}:${sel.bi}:${sel.ci}`
-              : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
+              : sel.kind === "bar"
+                ? `b:${sel.sectionId}:${sel.li}:${sel.bi}`
+                : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
           }
           title={selTitle}
           subtitle={
@@ -444,14 +519,16 @@ export function ReshapeView({
               ? selIsEmptyBar
                 ? "Empty bar — ＋ gives it a chord"
                 : "Move chord into the neighboring bar"
-              : "Shift phrase a bar at a time"
+              : sel.kind === "bar"
+                ? "＋ adds an empty bar · 🗑 deletes this one"
+                : "Shift phrase a bar at a time"
           }
           canLeft={canMove(-1)}
           canRight={canMove(1)}
           moveLabel={sel.kind === "chord" ? "Move chord" : "Shift phrase"}
-          onMove={moveSel}
+          onMove={sel.kind === "bar" ? undefined : moveSel}
           onClear={() => setSel(null)}
-          tools={chordTools}
+          tools={chordTools ?? barTools}
           edit={selEdit}
         />
       )}

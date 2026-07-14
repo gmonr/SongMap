@@ -7,22 +7,42 @@ import type { Line } from "@/lib/song/types";
  * cards. Split bars grow past the base width so their chords stay readable.
  * In Chords mode the syms become tap targets (`onChordTap`), with
  * `selectedChord` ringed; empty placeholders ("—") are tappable too, to
- * select-and-add a chord.
+ * select-and-add a chord. In Rows mode the *whole chip* is one tap target
+ * (`onTap`, ringed via `selected`) for picking up the bar itself — the two
+ * are mutually exclusive, so the chip never nests buttons.
  */
 export function BarChip({
   bar,
   lyric,
   selectedChord,
   onChordTap,
+  selected,
+  onTap,
 }: {
   bar: Line["bars"][number];
   lyric: string;
   selectedChord?: number | null;
   onChordTap?: (ci: number) => void;
+  /** Ring the whole chip (Rows mode's bar selection). */
+  selected?: boolean;
+  /** Make the whole chip one tap target; don't combine with onChordTap. */
+  onTap?: () => void;
 }) {
+  const Root = onTap ? "button" : "div";
   return (
-    <div className="flex w-fit min-w-16 max-w-40 shrink-0 flex-col items-center">
-      <div className="flex w-full items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-1 py-1">
+    <Root
+      {...(onTap ? { type: "button" as const, onClick: onTap } : {})}
+      className="flex w-fit min-w-16 max-w-40 shrink-0 flex-col items-center"
+    >
+      <div
+        className={`flex w-full items-center justify-center gap-1 rounded-md border bg-white px-1 py-1 ${
+          selected
+            ? "border-blue-500 ring-2 ring-blue-500"
+            : onTap
+              ? "border-slate-200 hover:border-blue-400"
+              : "border-slate-200"
+        }`}
+      >
         {bar.chords.map((c, i) =>
           onChordTap ? (
             <button
@@ -56,7 +76,7 @@ export function BarChip({
       <p className="mt-0.5 h-4 w-0 min-w-full truncate text-center text-[10px] leading-tight text-slate-500">
         {lyric}
       </p>
-    </div>
+    </Root>
   );
 }
 

@@ -61,7 +61,7 @@ is keyed by selection identity so reselecting mid-edit drops the draft, and
 `.reshape-surface input` re-enables text selection under the surface's
 select-none.
 
-## P3 — Bar add/remove (Rows mode)
+## P3 (done) — Bar add/remove (Rows mode)
 
 Solves: can't add or remove empty "same as before" (`—`) bars when the
 import guessed the bar count wrong (neither can the editor, mid-line).
@@ -72,6 +72,15 @@ import guessed the bar count wrong (neither can the editor, mid-line).
 - Rows mode: tap a bar chip to select the *bar* → `SelectionBar` shows
   [+ bar before] [+ bar after] [🗑 bar]. Seam/merge taps unchanged.
 - Tests in `lib/song/__tests__/lines.test.ts`.
+
+Shipped notes: the whole `BarChip` becomes the tap target in Rows mode
+(chords and bar chips never nest buttons, since Chords mode owns per-sym
+taps), and bar selections hide the SelectionBar's ◀ ▶ — bars don't move,
+they're added/removed. Inserting keeps the selection on the new `—` bar
+(mirroring chord inserts); `insertBar` takes `totalBeats` like the chord
+ops so the placeholder spans the song's meter. Deleting the row's *first*
+bar pushes its lyric onto the next bar (nothing precedes it), and deleting
+a row's only bar removes the whole row.
 
 ## Known polish debt
 
