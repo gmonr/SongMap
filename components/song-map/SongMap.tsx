@@ -10,7 +10,9 @@ import {
   shiftKey,
   type Notation,
 } from "@/lib/song/theory";
+import { PlaybackBar } from "./PlaybackBar";
 import { SectionCard } from "./SectionCard";
+import { usePlayback } from "./usePlayback";
 
 const NOTATIONS: { value: Notation; label: string; title: string }[] = [
   { value: "letters", label: "C", title: "Chord letters" },
@@ -40,6 +42,8 @@ export function SongMap({
   const [displayKey, setDisplayKey] = useState(songKey);
   const [notation, setNotation] = useState<Notation>("letters");
   const [showLyrics, setShowLyrics] = useState(true);
+  const [playbackOpen, setPlaybackOpen] = useState(false);
+  const pb = usePlayback(song, displayKey);
 
   const { tonic: displayTonic, minor } = parseKey(displayKey);
 
@@ -165,6 +169,17 @@ export function SongMap({
           Lyrics
         </label>
 
+        <button
+          type="button"
+          onClick={() => {
+            setPlaybackOpen(true);
+            if (pb.status === "stopped") pb.play();
+          }}
+          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+        >
+          ▶ Play
+        </button>
+
         {practiceHref && (
           <Link
             href={practiceHref}
@@ -214,9 +229,36 @@ export function SongMap({
                 ? { li: focusAnchor.li, bi: focusAnchor.bi }
                 : undefined
             }
+            playheadBar={
+              pb.current && pb.current.arrIdx === i
+                ? { li: pb.current.li, bi: pb.current.bi }
+                : undefined
+            }
+            onPlayFromHere={
+              playbackOpen
+                ? () => pb.playFromItem(i)
+                : undefined
+            }
           />
         );
       })}
+
+      {/* Clearance so the docked transport never hides the last section. */}
+      {playbackOpen && <div className="h-28" aria-hidden />}
+      {playbackOpen && (
+        <PlaybackBar
+          pb={pb}
+          sectionLabel={
+            pb.current
+              ? song.data.arrangement[pb.current.arrIdx]?.instanceLabel ?? null
+              : null
+          }
+          onClose={() => {
+            pb.stop();
+            setPlaybackOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

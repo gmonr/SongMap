@@ -37,6 +37,7 @@ export function BarCell({
   masked = false,
   onReveal,
   flash = false,
+  playhead = false,
 }: {
   bar: Bar;
   lyric?: string;
@@ -49,11 +50,26 @@ export function BarCell({
   onReveal?: () => void;
   /** Landing back from reshape: scroll here and flash once. */
   flash?: boolean;
+  /** Playback: this bar is sounding right now. */
+  playhead?: boolean;
 }) {
   const flashRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (flash) flashRef.current?.scrollIntoView({ block: "center" });
   }, [flash]);
+
+  // Follow the playhead, but only scroll when the bar leaves the middle
+  // band of the viewport — centering on every bar would judder constantly.
+  useEffect(() => {
+    if (!playhead) return;
+    const el = flashRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const h = window.innerHeight;
+    if (r.top < h * 0.15 || r.bottom > h * 0.75) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [playhead]);
 
   if (masked) {
     return (
@@ -81,7 +97,7 @@ export function BarCell({
       <div
         className={`flex items-stretch justify-around rounded-md border ${borderColor} bg-white px-1 py-1.5 ${
           flash ? "bar-flash" : ""
-        }`}
+        } ${playhead ? "bar-playhead" : ""}`}
       >
         {bar.chords.map((chord, i) => (
           <div

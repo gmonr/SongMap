@@ -39,3 +39,10 @@ body {
 .bar-flash {
   animation: bar-flash 2s ease-out 1 both;
 }
+
+/* Playback: the bar sounding right now. A steady ring (not an animation)
+   so the highlight moves crisply from bar to bar at any tempo. */
+.bar-playhead {
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.85);
+  background-color: rgb(219 234 254);
+}
