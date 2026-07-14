@@ -170,14 +170,19 @@ export class PlaybackEngine {
     }
   }
 
-  /** A short metronome blip; beat 1 of a bar is higher and louder. */
+  /**
+   * A short metronome blip; beat 1 of a bar is higher and louder. Kept
+   * well below the chord gains: it sits at 1-1.6 kHz where hearing is
+   * most sensitive and a square wave adds harmonics on top, so numeric
+   * parity with the chords would still drown them out.
+   */
   private scheduleClick(time: number, accent: boolean) {
     if (!this.cb.getClickOn()) return;
     const osc = this.ctx.createOscillator();
     const env = this.ctx.createGain();
     osc.type = "square";
     osc.frequency.value = accent ? 1568 : 1046;
-    env.gain.setValueAtTime(accent ? 0.22 : 0.12, time);
+    env.gain.setValueAtTime(accent ? 0.09 : 0.05, time);
     env.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
     osc.connect(env);
     env.connect(this.clickGain);
@@ -206,11 +211,14 @@ export class PlaybackEngine {
       osc.stop(time + ring + 0.05);
     };
 
+    // Balanced so the upper voicing carries as much weight as the bass:
+    // one sine at 0.20 vs three-four triangle tones at 0.16 each (a lone
+    // low sine reads much louder per unit gain than thin mid tones).
     if (voicing.bassMidi !== null) {
-      strike(midiToFreq(voicing.bassMidi), "sine", 0.28);
+      strike(midiToFreq(voicing.bassMidi), "sine", 0.2);
     }
     for (const midi of voicing.toneMidis) {
-      strike(midiToFreq(midi), "triangle", 0.09);
+      strike(midiToFreq(midi), "triangle", 0.16);
     }
   }
 }
