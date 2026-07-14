@@ -43,7 +43,7 @@ meant); renaming is P2's ✎. Moves preserve the *source* bar's splits (the
 moved chord's beats fold into its neighbor, mirroring delete); an occupied
 *destination* bar still re-splits evenly.
 
-## P2 — Small text edits (direction approved)
+## P2 (done) — Small text edits
 
 Solves: fixing a chord typo or misheard word requires the desktop editor.
 
@@ -51,6 +51,15 @@ Solves: fixing a chord typo or misheard word requires the desktop editor.
   `sym`; keyboard opens only from the explicit ✎ tap.
 - ✎ on a selected phrase in Lyrics mode → same pattern for the text.
 - No new modes, no always-on inputs.
+
+Shipped notes: the ✎ swaps the whole `SelectionBar` for one input (✓ commit,
+Esc/✕ cancel), backed by pure ops `renameChord` (keeps the beat split; no-ops
+on ""/placeholder — deleting stays 🗑's job, and empty bars get chords via
+＋) and `setBarLyric` (whitespace-normalized; committing "" clears the phrase
+and drops the selection, since an empty phrase can't be re-picked). The bar
+is keyed by selection identity so reselecting mid-edit drops the draft, and
+`.reshape-surface input` re-enables text selection under the surface's
+select-none.
 
 ## P3 — Bar add/remove (Rows mode)
 

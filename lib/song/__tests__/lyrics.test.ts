@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { lineWordLayout, setWordBoundary, shiftLyric } from "../lyrics";
+import {
+  lineWordLayout,
+  setBarLyric,
+  setWordBoundary,
+  shiftLyric,
+} from "../lyrics";
 import { bar, line, lyricsOf } from "./helpers";
 
 describe("lineWordLayout", () => {
@@ -71,6 +76,34 @@ describe("setWordBoundary", () => {
   it("normalizes internal whitespace of the touched bars", () => {
     const messy = line([bar("C"), bar("F")], { 0: "a   b  c", 1: "d" });
     expect(lyricsOf(setWordBoundary(messy, 1, 2))).toEqual(["a b", "c d"]);
+  });
+});
+
+describe("setBarLyric", () => {
+  const l = line([bar("C"), bar("F")], { 0: "oh what" });
+
+  it("replaces one bar's lyric, leaving the others alone", () => {
+    expect(lyricsOf(setBarLyric(l, 0, "oh when"))).toEqual(["oh when", ""]);
+    expect(lyricsOf(setBarLyric(l, 1, "a night"))).toEqual([
+      "oh what",
+      "a night",
+    ]);
+  });
+
+  it("normalizes whitespace and clears the span on empty text", () => {
+    expect(lyricsOf(setBarLyric(l, 0, "  oh   when "))).toEqual(["oh when", ""]);
+    const cleared = setBarLyric(l, 0, "");
+    expect(lyricsOf(cleared)).toEqual(["", ""]);
+    expect(cleared.lyrics).toHaveLength(0);
+    expect(lyricsOf(setBarLyric(l, 0, "   "))[0]).toBe("");
+  });
+
+  it("no-ops return the same reference", () => {
+    expect(setBarLyric(l, 0, "oh what")).toBe(l); // unchanged
+    expect(setBarLyric(l, 0, " oh  what ")).toBe(l); // unchanged once normalized
+    expect(setBarLyric(l, 1, "")).toBe(l); // already empty
+    expect(setBarLyric(l, 2, "x")).toBe(l); // bad bar index
+    expect(setBarLyric(l, -1, "x")).toBe(l);
   });
 });
 

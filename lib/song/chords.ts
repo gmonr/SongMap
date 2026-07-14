@@ -197,6 +197,29 @@ export function deleteChord(
 }
 
 /**
+ * Rename chord `ci` of bar `bi` in line `li` to `sym`, keeping its beats and
+ * everything else in place. Same-reference no-op on bad coords, an empty
+ * `sym`, a "" placeholder (empty bars get chords via insertChord), or an
+ * unchanged symbol.
+ */
+export function renameChord(
+  lines: Line[],
+  li: number,
+  bi: number,
+  ci: number,
+  sym: string
+): Line[] {
+  const bar = lines[li]?.bars[bi];
+  const chord = bar?.chords[ci];
+  if (!bar || !chord || chord.sym === "" || sym === "" || sym === chord.sym) {
+    return lines;
+  }
+  return withBar(lines, li, bi, {
+    chords: bar.chords.map((c, j) => (j === ci ? { ...c, sym } : c)),
+  });
+}
+
+/**
  * Move the beat boundary between chord `ci` and `ci + 1` of `bar` so that
  * chord `ci` holds `beats` of the pair's combined span (each side keeps
  * ≥ 1 beat; the pair's total is preserved). Same-reference no-op when the
