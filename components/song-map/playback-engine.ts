@@ -46,6 +46,8 @@ export class PlaybackEngine {
   private pos: number;
   private nextTime = 0;
   private done = false;
+  /** Beats to skip at the start of the first bar (tap on a mid-bar chord). */
+  private skipOnce = 0;
   /** Scheduled playhead updates, drained as audio time reaches them. */
   private displayQueue: { time: number; idx: number | null }[] = [];
 
@@ -61,9 +63,17 @@ export class PlaybackEngine {
     this.pos = 0;
   }
 
-  /** Begin playing at timeline index `from`, after `countInBeats` clicks. */
-  start(from: number, countInBeats: number) {
+  /**
+   * Begin playing at timeline index `from`, after `countInBeats` clicks.
+   * `skipBeats` drops the first beats of that bar, so playback can enter
+   * a split bar at a tapped chord instead of the bar top.
+   */
+  start(from: number, countInBeats: number, skipBeats = 0) {
     this.pos = Math.max(0, Math.min(from, this.timeline.bars.length - 1));
+    const firstBar = this.timeline.bars[this.pos];
+    this.skipOnce = firstBar
+      ? Math.max(0, Math.min(skipBeats, firstBar.beats - 1))
+      : 0;
     void this.ctx.resume();
     const spb = 60 / this.clampTempo(this.cb.getTempo());
     let t = this.ctx.currentTime + 0.08;
@@ -123,20 +133,24 @@ export class PlaybackEngine {
         break;
       }
       const spb = 60 / this.clampTempo(this.cb.getTempo());
+      const skip = this.skipOnce;
+      this.skipOnce = 0;
       this.displayQueue.push({ time: this.nextTime, idx: this.pos });
 
-      for (let b = 0; b < bar.beats; b++) {
-        this.scheduleClick(this.nextTime + b * spb, b === 0);
+      for (let b = skip; b < bar.beats; b++) {
+        this.scheduleClick(this.nextTime + (b - skip) * spb, b === 0);
       }
       for (const chord of bar.chords) {
         const offset = chord.startBeat - bar.startBeat;
+        const end = offset + chord.beats;
+        if (end <= skip) continue;
         this.scheduleChord(
           chord.sym,
-          this.nextTime + offset * spb,
-          chord.beats * spb
+          this.nextTime + Math.max(0, offset - skip) * spb,
+          (end - Math.max(offset, skip)) * spb
         );
       }
-      this.nextTime += bar.beats * spb;
+      this.nextTime += (bar.beats - skip) * spb;
 
       // Advance, honoring the live loop mode.
       const loop = this.cb.getLoop();

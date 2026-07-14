@@ -94,3 +94,19 @@ export function sectionLoopRange(t: Timeline, idx: number): [number, number] {
 export function firstBarOfItem(t: Timeline, arrIdx: number): number {
   return t.bars.findIndex((b) => b.arrIdx === arrIdx);
 }
+
+/**
+ * Timeline index of the bar at (arrIdx, li, bi) — first repeat pass — or -1
+ * when no such bar exists. This is how a tap on a rendered bar (which knows
+ * its section-relative indexes) becomes a playback position.
+ */
+export function barIndexAt(
+  t: Timeline,
+  arrIdx: number,
+  li: number,
+  bi: number
+): number {
+  return t.bars.findIndex(
+    (b) => b.arrIdx === arrIdx && b.pass === 0 && b.li === li && b.bi === bi
+  );
+}

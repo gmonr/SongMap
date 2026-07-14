@@ -239,6 +239,10 @@ export function SongMap({
                 ? () => pb.playFromItem(i)
                 : undefined
             }
+            onChordTap={(li, bi, ci) => {
+              setPlaybackOpen(true);
+              pb.playFromChord(i, li, bi, ci);
+            }}
           />
         );
       })}

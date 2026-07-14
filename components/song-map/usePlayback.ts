@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  barIndexAt,
   buildTimeline,
   firstBarOfItem,
   type Timeline,
@@ -30,6 +31,8 @@ export interface Playback {
   loop: LoopMode;
   play: () => void;
   playFromItem: (arrIdx: number) => void;
+  /** Start at a tapped chord: bar (arrIdx, li, bi), chord index ci. */
+  playFromChord: (arrIdx: number, li: number, bi: number, ci: number) => void;
   /** Toggle pause/resume (starts from the top when stopped). */
   toggle: () => void;
   stop: () => void;
@@ -81,7 +84,7 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
   };
   useEffect(() => disposeEngine, []);
 
-  const startAt = (idx: number) => {
+  const startAt = (idx: number, skipBeats = 0) => {
     if (timeline.bars.length === 0) return;
     disposeEngine();
     const engine = new PlaybackEngine(timeline, {
@@ -112,7 +115,7 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
     setCurrentIdx(null);
     setCountingIn(countIn > 0);
     setStatus("playing");
-    engine.start(idx, countIn);
+    engine.start(idx, countIn, skipBeats);
   };
 
   const stop = () => {
@@ -138,6 +141,14 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
   const playFromItem = (arrIdx: number) => {
     const idx = firstBarOfItem(timeline, arrIdx);
     if (idx !== -1) startAt(idx);
+  };
+
+  const playFromChord = (arrIdx: number, li: number, bi: number, ci: number) => {
+    const idx = barIndexAt(timeline, arrIdx, li, bi);
+    if (idx === -1) return;
+    const chord = timeline.bars[idx].chords[ci];
+    const skip = chord ? chord.startBeat - timeline.bars[idx].startBeat : 0;
+    startAt(idx, skip);
   };
 
   const skipSection = (dir: -1 | 1) => {
@@ -176,6 +187,7 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
     loop,
     play: () => startAt(0),
     playFromItem,
+    playFromChord,
     toggle,
     stop,
     skipSection,
