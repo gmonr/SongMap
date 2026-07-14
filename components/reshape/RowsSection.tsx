@@ -1,4 +1,5 @@
 import { mergeLineWithNext, splitLine } from "@/lib/song/lines";
+import { reshapeBarDomId } from "@/lib/song/selection";
 import type { Line, SectionDef } from "@/lib/song/types";
 import { BarChip, lyricFor } from "./BarChip";
 import type { ReshapeSelection } from "./ReshapeView";
@@ -35,7 +36,11 @@ export function RowsSection({
                 sel.li === li &&
                 sel.bi === bi;
               return (
-                <div key={bi} className="flex items-stretch">
+                <div
+                  key={bi}
+                  id={reshapeBarDomId({ sectionId, li, bi })}
+                  className="flex items-stretch"
+                >
                   <BarChip
                     bar={bar}
                     lyric={lyricFor(line, bi)}

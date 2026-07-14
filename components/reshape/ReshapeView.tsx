@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   chordMoveTarget,
   deleteChord,
@@ -20,6 +20,14 @@ import {
   setWordBoundary,
   shiftLyric,
 } from "@/lib/song/lyrics";
+import {
+  encodeFocus,
+  mapSelection,
+  reshapeBarDomId,
+  selectionAnchor,
+  type BarAnchor,
+  type ReshapeSelection,
+} from "@/lib/song/selection";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
@@ -32,12 +40,7 @@ import { RowsSection } from "./RowsSection";
 import { SelectionBar } from "./SelectionBar";
 
 /** What is currently picked up, across every section and mode. */
-export type ReshapeSelection =
-  | { kind: "chord"; sectionId: string; li: number; bi: number; ci: number }
-  | { kind: "phrase"; sectionId: string; li: number; bar: number }
-  | { kind: "bar"; sectionId: string; li: number; bi: number }
-  /** The │ break between bars `boundary - 1` and `boundary` of a line. */
-  | { kind: "break"; sectionId: string; li: number; boundary: number };
+export type { ReshapeSelection } from "@/lib/song/selection";
 
 const HINTS: Record<ReshapeMode, ReactNode> = {
   rows: (
@@ -110,10 +113,33 @@ export function ReshapeView({
   const dirty = data !== song.data;
   const beats = beatsPerBar(song.time_signature);
 
+  // Mode switches stay on the same bar: the selection maps to its
+  // equivalent in the new mode (or drops if there is none, e.g. a lyric-less
+  // bar in Lyrics mode) and the bar scrolls back into view either way.
+  const pendingScroll = useRef<BarAnchor | null>(null);
   const setMode = (m: ReshapeMode) => {
+    if (sel) {
+      pendingScroll.current = selectionAnchor(sel, data);
+      setSel(mapSelection(sel, m, data));
+    }
     setModeState(m);
-    setSel(null);
   };
+
+  useEffect(() => {
+    const anchor = pendingScroll.current;
+    if (!anchor) return;
+    pendingScroll.current = null;
+    document
+      .getElementById(reshapeBarDomId(anchor))
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [mode]);
+
+  // The most recent pick-up, so leaving for the song map can point at the
+  // bar the user was last working on even after they tapped it off.
+  const lastSelRef = useRef<ReshapeSelection | null>(null);
+  useEffect(() => {
+    if (sel) lastSelRef.current = sel;
+  }, [sel]);
 
   // Warn before the browser discards unsaved reshaping (tab close, reload,
   // back gesture). The in-app Back link gets its own confirm below.
@@ -424,6 +450,13 @@ export function ReshapeView({
       </>
     ) : undefined;
 
+  // Land the song map on the bar being reshaped: back link and Save both
+  // carry a ?focus= param the map scrolls to and flashes.
+  const focusAnchor = selectionAnchor(sel ?? lastSelRef.current, data);
+  const exitHref = focusAnchor
+    ? `${songHref}?focus=${encodeURIComponent(encodeFocus(focusAnchor))}`
+    : songHref;
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -437,7 +470,7 @@ export function ReshapeView({
       setError(error.message);
       return;
     }
-    router.push(songHref);
+    router.push(exitHref);
     router.refresh();
   };
 
@@ -461,7 +494,7 @@ export function ReshapeView({
           </h1>
           <span className="flex-1" />
           <Link
-            href={songHref}
+            href={exitHref}
             onClick={(e) => {
               if (dirty && !confirm("Discard unsaved reshaping?")) {
                 e.preventDefault();

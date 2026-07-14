@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { sectionColor } from "@/lib/song/colors";
 import type { ArrangementItem, SectionDef } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
@@ -22,6 +22,7 @@ export function SectionCard({
   showLyrics,
   isBarMasked,
   onRevealBar,
+  focusBar,
 }: {
   def: SectionDef;
   item: ArrangementItem;
@@ -34,12 +35,28 @@ export function SectionCard({
   isBarMasked?: (lineIndex: number, barIndex: number) => boolean;
   /** Practice mode: reveal the bar at (lineIndex, barIndex). */
   onRevealBar?: (lineIndex: number, barIndex: number) => void;
+  /** Landing back from reshape: scroll to this bar and flash it. */
+  focusBar?: { li: number; bi: number };
 }) {
-  const [expanded, setExpanded] = useState(!item.sameChordsAs);
+  const [expanded, setExpanded] = useState(!item.sameChordsAs || !!focusBar);
   const color = sectionColor(def.color);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // The focus indexes can be stale (reshaping was discarded after deleting
+  // bars/rows): a bad line falls back to scrolling the section card itself,
+  // a bad bar clamps to the line's last bar (in the BarCell flash below).
+  const focusLine = focusBar ? def.lines[focusBar.li] : undefined;
+  useEffect(() => {
+    if (focusBar && !focusLine) {
+      sectionRef.current?.scrollIntoView({ block: "start" });
+    }
+    // Run once on mount: the focus handoff only exists on first render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section
+      ref={sectionRef}
       className={`overflow-hidden rounded-xl border border-slate-200 ${color.card} shadow-sm`}
     >
       <div className="flex items-center gap-3 px-4 pt-3">
@@ -94,6 +111,11 @@ export function SectionCard({
                     borderColor={color.barBorder}
                     masked={isBarMasked?.(li, bi) ?? false}
                     onReveal={() => onRevealBar?.(li, bi)}
+                    flash={
+                      !!focusBar &&
+                      li === focusBar.li &&
+                      bi === Math.min(focusBar.bi, line.bars.length - 1)
+                    }
                   />
                 ))}
               </div>
