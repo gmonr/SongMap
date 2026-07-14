@@ -1,6 +1,7 @@
 "use client";
 
 import { lineWordLayout, setWordBoundary } from "@/lib/song/lyrics";
+import { reshapeBarDomId } from "@/lib/song/selection";
 import type { Line, SectionDef } from "@/lib/song/types";
 import type { ReshapeSelection } from "./ReshapeView";
 
@@ -90,7 +91,11 @@ export function LyricsSection({
                 sel.bar === bi;
               const hasLyric = b.words.length > 0;
               return (
-                <div key={bi} className="flex max-w-full items-stretch">
+                <div
+                  key={bi}
+                  id={reshapeBarDomId({ sectionId, li, bi })}
+                  className="flex max-w-full items-stretch"
+                >
                   {bi > 0 && (
                     // The bar break itself: a tap target with a ~24px
                     // invisible hit box around the slim visible divider.

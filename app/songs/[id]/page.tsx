@@ -7,13 +7,22 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function SongPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ focus?: string }>;
 }) {
   const { id } = await params;
+  const { focus } = await searchParams;
 
   if (id === DEMO_SONG_ID) {
-    return <SongMap song={DEMO_SONG} practiceHref={`/songs/${DEMO_SONG_ID}/practice`} />;
+    return (
+      <SongMap
+        song={DEMO_SONG}
+        practiceHref={`/songs/${DEMO_SONG_ID}/practice`}
+        focus={focus}
+      />
+    );
   }
 
   if (!isSupabaseConfigured) notFound();
@@ -33,6 +42,7 @@ export default async function SongPage({
       editHref={`/songs/${song.id}/edit`}
       practiceHref={`/songs/${song.id}/practice`}
       reshapeHref={`/songs/${song.id}/reshape`}
+      focus={focus}
     />
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { parseFocus } from "@/lib/song/selection";
 import type { SongRow } from "@/lib/song/types";
 import {
   KEYS,
@@ -26,11 +27,14 @@ export function SongMap({
   editHref,
   practiceHref,
   reshapeHref,
+  focus,
 }: {
   song: SongRow;
   editHref?: string;
   practiceHref?: string;
   reshapeHref?: string;
+  /** ?focus= handoff from reshape: scroll to this bar and flash it. */
+  focus?: string;
 }) {
   const songKey = song.key || "C";
   const [displayKey, setDisplayKey] = useState(songKey);
@@ -46,6 +50,26 @@ export function SongMap({
       firstInstanceLabel.set(item.ref, item.instanceLabel);
     }
   }
+
+  // Landing back from reshape: flash the bar in the section's first
+  // full instance (same-as instances render collapsed — fall back to one
+  // only when no full instance exists, and SectionCard expands it).
+  const focusAnchor = parseFocus(focus);
+  let focusIndex = -1;
+  if (focusAnchor) {
+    const items = song.data.arrangement;
+    focusIndex = items.findIndex(
+      (it) => it.ref === focusAnchor.sectionId && !it.sameChordsAs
+    );
+    if (focusIndex === -1) {
+      focusIndex = items.findIndex((it) => it.ref === focusAnchor.sectionId);
+    }
+  }
+
+  // One flash per handoff: drop ?focus= so refresh/back doesn't replay it.
+  useEffect(() => {
+    if (focus) window.history.replaceState(null, "", window.location.pathname);
+  }, [focus]);
 
   return (
     <div className="space-y-4">
@@ -185,6 +209,11 @@ export function SongMap({
             displayKey={displayKey}
             notation={notation}
             showLyrics={showLyrics}
+            focusBar={
+              i === focusIndex && focusAnchor
+                ? { li: focusAnchor.li, bi: focusAnchor.bi }
+                : undefined
+            }
           />
         );
       })}

@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import type { Bar } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
@@ -33,6 +36,7 @@ export function BarCell({
   borderColor,
   masked = false,
   onReveal,
+  flash = false,
 }: {
   bar: Bar;
   lyric?: string;
@@ -43,7 +47,14 @@ export function BarCell({
   borderColor: string;
   masked?: boolean;
   onReveal?: () => void;
+  /** Landing back from reshape: scroll here and flash once. */
+  flash?: boolean;
 }) {
+  const flashRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (flash) flashRef.current?.scrollIntoView({ block: "center" });
+  }, [flash]);
+
   if (masked) {
     return (
       <button
@@ -66,9 +77,11 @@ export function BarCell({
   }
 
   return (
-    <div className="flex min-w-0 flex-col">
+    <div ref={flashRef} className="flex min-w-0 flex-col">
       <div
-        className={`flex items-stretch justify-around rounded-md border ${borderColor} bg-white px-1 py-1.5`}
+        className={`flex items-stretch justify-around rounded-md border ${borderColor} bg-white px-1 py-1.5 ${
+          flash ? "bar-flash" : ""
+        }`}
       >
         {bar.chords.map((chord, i) => (
           <div

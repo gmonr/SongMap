@@ -22,3 +22,20 @@ body {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* Landing back from reshape: the bar you were working on flashes then
+   fades (blues match reshape's selection; the box's resting bg is white,
+   so the fade must end there or the fill-mode would keep it see-through). */
+@keyframes bar-flash {
+  0% {
+    box-shadow: 0 0 0 3px rgb(59 130 246 / 0.9);
+    background-color: rgb(219 234 254);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgb(59 130 246 / 0);
+    background-color: white;
+  }
+}
+.bar-flash {
+  animation: bar-flash 2s ease-out 1 both;
+}

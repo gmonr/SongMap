@@ -1,5 +1,6 @@
 "use client";
 
+import { reshapeBarDomId } from "@/lib/song/selection";
 import type { Line, SectionDef } from "@/lib/song/types";
 import { BarChip, lyricFor } from "./BarChip";
 import type { ReshapeSelection } from "./ReshapeView";
@@ -35,7 +36,11 @@ export function ChordsSection({
               sel.li === li &&
               sel.bi === bi;
             return (
-              <div key={bi} className="flex items-start px-0.5">
+              <div
+                key={bi}
+                id={reshapeBarDomId({ sectionId, li, bi })}
+                className="flex items-start px-0.5"
+              >
                 <BarChip
                   bar={bar}
                   lyric={lyricFor(line, bi)}
