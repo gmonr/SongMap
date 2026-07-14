@@ -14,7 +14,12 @@ import {
 } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
 import { deleteBar, insertBar } from "@/lib/song/lines";
-import { setBarLyric, shiftLyric } from "@/lib/song/lyrics";
+import {
+  lineWordLayout,
+  setBarLyric,
+  setWordBoundary,
+  shiftLyric,
+} from "@/lib/song/lyrics";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
@@ -30,7 +35,9 @@ import { SelectionBar } from "./SelectionBar";
 export type ReshapeSelection =
   | { kind: "chord"; sectionId: string; li: number; bi: number; ci: number }
   | { kind: "phrase"; sectionId: string; li: number; bar: number }
-  | { kind: "bar"; sectionId: string; li: number; bi: number };
+  | { kind: "bar"; sectionId: string; li: number; bi: number }
+  /** The │ break between bars `boundary - 1` and `boundary` of a line. */
+  | { kind: "break"; sectionId: string; li: number; boundary: number };
 
 const HINTS: Record<ReshapeMode, ReactNode> = {
   rows: (
@@ -48,12 +55,15 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
   ),
   lyrics: (
     <>
-      Tap the gap <b className="font-semibold text-slate-600">between two words</b>{" "}
-      to move the bar break there. Tap a bar&apos;s{" "}
-      <b className="font-semibold text-slate-600">chord label</b> to pick up its
-      whole phrase, then ◀ ▶ in the bottom bar to shift it a bar at a time and{" "}
-      <b className="font-semibold text-slate-600">✎</b> to retype its words. To
-      move words between rows, merge the rows in Rows mode first.
+      Tap the <b className="font-semibold text-slate-600">│ break</b> between
+      two bars to pick it up, then ◀ ▶ in the bottom bar move it one word at a
+      time — or tap one of the{" "}
+      <b className="font-semibold text-slate-600">word gaps</b> that light up
+      to place it there. Tap a bar&apos;s{" "}
+      <b className="font-semibold text-slate-600">chord label</b> to pick up
+      its whole phrase (◀ ▶ shifts it a bar,{" "}
+      <b className="font-semibold text-slate-600">✎</b> retypes it). To move
+      words between rows, merge the rows in Rows mode first.
     </>
   ),
   chords: (
@@ -160,12 +170,25 @@ export function ReshapeView({
   const selIsEmptyBar =
     !!selBar && selBar.chords.length === 1 && selBar.chords[0].sym === "";
 
+  // A selected break moves one word at a time: the break at word position
+  // `start` moved to `start + dir`. setWordBoundary no-ops (same reference)
+  // when the pair's words run out in that direction.
+  const movedBreak = (line: Line, boundary: number, dir: -1 | 1): Line => {
+    const start = lineWordLayout(line).bars[boundary]?.start;
+    return start === undefined
+      ? line
+      : setWordBoundary(line, boundary, start + dir);
+  };
+
   const canMove = (dir: -1 | 1): boolean => {
     if (!sel || !selLines || sel.kind === "bar") return false;
     if (sel.kind === "chord") {
       return (
         chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats) !== null
       );
+    }
+    if (sel.kind === "break") {
+      return movedBreak(selLines[sel.li], sel.boundary, dir) !== selLines[sel.li];
     }
     return shiftLyric(selLines[sel.li], sel.bar, dir) !== selLines[sel.li];
   };
@@ -179,6 +202,13 @@ export function ReshapeView({
         moveChord(lines, sel.li, sel.bi, sel.ci, dir, beats)
       );
       setSel({ ...sel, ...target });
+    } else if (sel.kind === "break") {
+      const next = movedBreak(selLines[sel.li], sel.boundary, dir);
+      if (next === selLines[sel.li]) return;
+      applyToSection(sel.sectionId, (lines) =>
+        lines.map((l, i) => (i === sel.li ? next : l))
+      );
+      // The break keeps its identity (boundary index) — selection stands.
     } else {
       const next = shiftLyric(selLines[sel.li], sel.bar, dir);
       if (next === selLines[sel.li]) return;
@@ -189,13 +219,25 @@ export function ReshapeView({
     }
   };
 
+  // "last-word │ first-word" around a selected break, "·" for an empty side.
+  const breakTitle = (line: Line, boundary: number): string => {
+    const layout = lineWordLayout(line);
+    const left = layout.bars[boundary - 1];
+    const right = layout.bars[boundary];
+    return `${left?.words[left.words.length - 1] ?? "·"} │ ${
+      right?.words[0] ?? "·"
+    }`;
+  };
+
   const selTitle =
     sel && selLines
       ? sel.kind === "chord"
         ? selLines[sel.li]?.bars[sel.bi]?.chords[sel.ci]?.sym || "—"
         : sel.kind === "bar"
           ? selBar?.chords.map((c) => c.sym).filter(Boolean).join(" ") || "—"
-          : lyricFor(selLines[sel.li], sel.bar) || "—"
+          : sel.kind === "break"
+            ? breakTitle(selLines[sel.li], sel.boundary)
+            : lyricFor(selLines[sel.li], sel.bar) || "—"
       : "";
 
   // Chord tools (P1). Taps never type, so inserts seed their symbol from
@@ -402,11 +444,22 @@ export function ReshapeView({
   return (
     <div
       className={`reshape-surface select-none space-y-4 ${
-        sel ? (sel.kind === "phrase" ? "pb-24" : "pb-36") : ""
+        sel
+          ? sel.kind === "chord" || sel.kind === "bar"
+            ? "pb-36"
+            : "pb-24"
+          : ""
       }`}
     >
-      <header className="sticky top-2 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="min-w-0">
+      {/* Two tight rows even on phones: title + back link, then the mode
+          toggle with icon-only Undo and Save (errors get a rare third row). */}
+      <header className="sticky top-2 z-30 space-y-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="min-w-0 truncate text-base font-bold leading-tight">
+            {song.title}{" "}
+            <span className="font-normal text-slate-400">· Reshape</span>
+          </h1>
+          <span className="flex-1" />
           <Link
             href={songHref}
             onClick={(e) => {
@@ -414,35 +467,34 @@ export function ReshapeView({
                 e.preventDefault();
               }
             }}
-            className="text-xs text-slate-500 hover:underline"
+            className="shrink-0 text-xs text-slate-500 hover:underline"
           >
-            ← Back to song map
+            ← Song map
           </Link>
-          <h1 className="truncate text-xl font-bold leading-tight">
-            {song.title}{" "}
-            <span className="font-normal text-slate-400">· Reshape</span>
-          </h1>
         </div>
-        <span className="flex-1" />
-        <ModeToggle mode={mode} onChange={setMode} />
-        {error && <p className="text-sm text-rose-600">{error}</p>}
-        <button
-          type="button"
-          onClick={undo}
-          disabled={history.length === 0}
-          title="Undo last change"
-          className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
-        >
-          ↶ Undo
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!dirty || saving}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
+        <div className="flex items-center gap-2">
+          <ModeToggle mode={mode} onChange={setMode} />
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={undo}
+            disabled={history.length === 0}
+            aria-label="Undo last change"
+            title="Undo last change"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-base text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saving}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+        {error && <p className="text-xs text-rose-600">{error}</p>}
       </header>
 
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
@@ -511,21 +563,31 @@ export function ReshapeView({
               ? `c:${sel.sectionId}:${sel.li}:${sel.bi}:${sel.ci}`
               : sel.kind === "bar"
                 ? `b:${sel.sectionId}:${sel.li}:${sel.bi}`
-                : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
+                : sel.kind === "break"
+                  ? `k:${sel.sectionId}:${sel.li}:${sel.boundary}`
+                  : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
           }
           title={selTitle}
           subtitle={
             sel.kind === "chord"
               ? selIsEmptyBar
-                ? "Empty bar — ＋ gives it a chord"
-                : "Move chord into the neighboring bar"
+                ? "＋ gives this empty bar a chord"
+                : "◀ ▶ move it one bar"
               : sel.kind === "bar"
-                ? "＋ adds an empty bar · 🗑 deletes this one"
-                : "Shift phrase a bar at a time"
+                ? "＋ add empty bar · 🗑 delete"
+                : sel.kind === "break"
+                  ? "◀ ▶ move the break one word"
+                  : "◀ ▶ shift it one bar"
           }
           canLeft={canMove(-1)}
           canRight={canMove(1)}
-          moveLabel={sel.kind === "chord" ? "Move chord" : "Shift phrase"}
+          moveLabel={
+            sel.kind === "chord"
+              ? "Move chord"
+              : sel.kind === "break"
+                ? "Move break"
+                : "Shift phrase"
+          }
           onMove={sel.kind === "bar" ? undefined : moveSel}
           onClear={() => setSel(null)}
           tools={chordTools ?? barTools}
