@@ -82,8 +82,27 @@ ops so the placeholder spans the song's meter. Deleting the row's *first*
 bar pushes its lyric onto the next bar (nothing precedes it), and deleting
 a row's only bar removes the whole row.
 
-## Known polish debt
+## Known polish debt (done)
 
-- The sticky reshape header wraps to ~3 rows on phones (~15% of the
-  viewport); compact it (e.g. icon-only Undo, tighter title row).
-- `SelectionBar` subtitle truncates on narrow screens; shorten the copy.
+- ~~The sticky reshape header wraps to ~3 rows on phones (~15% of the
+  viewport); compact it (e.g. icon-only Undo, tighter title row).~~ Done:
+  two tight rows (title + back link, then mode toggle / icon-only ↶ / Save),
+  errors on a rare third row.
+- ~~`SelectionBar` subtitle truncates on narrow screens; shorten the copy.~~
+  Done: subtitles now name the actions ("◀ ▶ move it one bar", "＋ add
+  empty bar · 🗑 delete").
+- A long phrase in one bar overflowed the section card's `overflow-hidden`
+  with no scroll (Lyrics mode). Done: the bar's word row wraps instead.
+
+## Known issues — Lyrics word gaps (fix TBD)
+
+Tapping a word gap moves the *nearer* of the tapped bar's two edges there
+(tie → left), decided invisibly in `boundaryFor`. Two consequences, found
+in use 2026-07:
+
+- Ambiguous: a mid-bar gap tap can move either boundary; the user can't
+  predict whether words fold left or right.
+- Corner: from an interior bar you can't push words rightward into an
+  empty trailing bar — the boundary into it already sits after the bar's
+  last word (so that edge is filtered as a no-op) and ties resolve left,
+  so every tap folds words backwards. Workaround: select the phrase and ▶.

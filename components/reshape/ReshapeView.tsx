@@ -405,8 +405,15 @@ export function ReshapeView({
         sel ? (sel.kind === "phrase" ? "pb-24" : "pb-36") : ""
       }`}
     >
-      <header className="sticky top-2 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="min-w-0">
+      {/* Two tight rows even on phones: title + back link, then the mode
+          toggle with icon-only Undo and Save (errors get a rare third row). */}
+      <header className="sticky top-2 z-30 space-y-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="min-w-0 truncate text-base font-bold leading-tight">
+            {song.title}{" "}
+            <span className="font-normal text-slate-400">· Reshape</span>
+          </h1>
+          <span className="flex-1" />
           <Link
             href={songHref}
             onClick={(e) => {
@@ -414,35 +421,34 @@ export function ReshapeView({
                 e.preventDefault();
               }
             }}
-            className="text-xs text-slate-500 hover:underline"
+            className="shrink-0 text-xs text-slate-500 hover:underline"
           >
-            ← Back to song map
+            ← Song map
           </Link>
-          <h1 className="truncate text-xl font-bold leading-tight">
-            {song.title}{" "}
-            <span className="font-normal text-slate-400">· Reshape</span>
-          </h1>
         </div>
-        <span className="flex-1" />
-        <ModeToggle mode={mode} onChange={setMode} />
-        {error && <p className="text-sm text-rose-600">{error}</p>}
-        <button
-          type="button"
-          onClick={undo}
-          disabled={history.length === 0}
-          title="Undo last change"
-          className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
-        >
-          ↶ Undo
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!dirty || saving}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
+        <div className="flex items-center gap-2">
+          <ModeToggle mode={mode} onChange={setMode} />
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={undo}
+            disabled={history.length === 0}
+            aria-label="Undo last change"
+            title="Undo last change"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-base text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saving}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+        {error && <p className="text-xs text-rose-600">{error}</p>}
       </header>
 
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
@@ -517,11 +523,11 @@ export function ReshapeView({
           subtitle={
             sel.kind === "chord"
               ? selIsEmptyBar
-                ? "Empty bar — ＋ gives it a chord"
-                : "Move chord into the neighboring bar"
+                ? "＋ gives this empty bar a chord"
+                : "◀ ▶ move it one bar"
               : sel.kind === "bar"
-                ? "＋ adds an empty bar · 🗑 deletes this one"
-                : "Shift phrase a bar at a time"
+                ? "＋ add empty bar · 🗑 delete"
+                : "◀ ▶ shift it one bar"
           }
           canLeft={canMove(-1)}
           canRight={canMove(1)}

@@ -104,7 +104,7 @@ export function LyricsSection({
                 sel.bar === bi;
               const hasLyric = b.words.length > 0;
               return (
-                <div key={bi} className="flex items-stretch">
+                <div key={bi} className="flex max-w-full items-stretch">
                   {bi > 0 && (
                     <span
                       className="mx-0.5 w-0.5 shrink-0 self-stretch rounded bg-slate-300"
@@ -112,7 +112,7 @@ export function LyricsSection({
                     />
                   )}
                   <div
-                    className={`flex flex-col gap-0.5 rounded-md px-1 py-0.5 ${
+                    className={`flex min-w-0 flex-col gap-0.5 rounded-md px-1 py-0.5 ${
                       selected ? "bg-blue-50 ring-1 ring-blue-300" : ""
                     }`}
                   >
@@ -135,7 +135,9 @@ export function LyricsSection({
                     >
                       {chordLabel}
                     </button>
-                    <div className="flex min-h-6 items-center">
+                    {/* flex-wrap: a long phrase folds to more rows instead of
+                        clipping under the section card's overflow-hidden. */}
+                    <div className="flex min-h-6 max-w-full flex-wrap items-center gap-y-1">
                       {hasLyric ? (
                         <>
                           {gapButton(bi, 0)}
