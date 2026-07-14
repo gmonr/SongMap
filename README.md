@@ -97,6 +97,25 @@ Nashville-number display.
   split/merge, word-boundary moves, phrase shifts, and chord
   move/insert/delete with beat redistribution and beat-boundary moves.
 
+## Features (Phase 5)
+
+- **Playback** — a ▶ Play button on the song map plays the arrangement in
+  time: a metronome click per beat (accented downbeats) and a soft piano-ish
+  synth strike per chord (close-voiced above middle C over a bass note, via
+  Web Audio — no samples, no dependencies). The sounding bar is highlighted
+  and kept in view, repeats (`×2`) are unrolled, `—` placeholder bars sound
+  their carried chord, and the playhead entering a collapsed
+  `same as Verse 1` card auto-expands it.
+- **Transport bar** — docked at the bottom (same pattern as reshape's
+  selection bar): play/pause, stop, previous/next section, and a live
+  section + bar readout. Every section card also gets a ▶ to start playback
+  from that section.
+- **Practice knobs** — live tempo control (± around the song's ♩, with
+  reset), loop **off / section / song** (section loops include all repeat
+  passes), a one-bar count-in toggle, and independent click / chords mutes —
+  all applied mid-flight without restarting. Audio follows the current
+  transpose: shift the display key and the chords sound in that key.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats

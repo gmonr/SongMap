@@ -23,6 +23,8 @@ export function SectionCard({
   isBarMasked,
   onRevealBar,
   focusBar,
+  playheadBar,
+  onPlayFromHere,
 }: {
   def: SectionDef;
   item: ArrangementItem;
@@ -37,10 +39,20 @@ export function SectionCard({
   onRevealBar?: (lineIndex: number, barIndex: number) => void;
   /** Landing back from reshape: scroll to this bar and flash it. */
   focusBar?: { li: number; bi: number };
+  /** Playback: the bar sounding right now, when it's in this instance. */
+  playheadBar?: { li: number; bi: number };
+  /** Playback: start playing from this instance's first bar. */
+  onPlayFromHere?: () => void;
 }) {
   const [expanded, setExpanded] = useState(!item.sameChordsAs || !!focusBar);
   const color = sectionColor(def.color);
   const sectionRef = useRef<HTMLElement>(null);
+
+  // The playhead entering a collapsed "same as" instance pops it open so
+  // the highlighted bar is actually visible.
+  useEffect(() => {
+    if (playheadBar) setExpanded(true);
+  }, [playheadBar]);
 
   // The focus indexes can be stale (reshaping was discarded after deleting
   // bars/rows): a bad line falls back to scrolling the section card itself,
@@ -77,6 +89,17 @@ export function SectionCard({
           </span>
         )}
         <span className="flex-1" />
+        {onPlayFromHere && (
+          <button
+            type="button"
+            onClick={onPlayFromHere}
+            aria-label={`Play from ${item.instanceLabel || def.label}`}
+            title="Play from here"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-xs text-slate-400 hover:bg-white hover:text-blue-600"
+          >
+            ▶
+          </button>
+        )}
         {item.sameChordsAs && (
           <button
             type="button"
@@ -115,6 +138,11 @@ export function SectionCard({
                       !!focusBar &&
                       li === focusBar.li &&
                       bi === Math.min(focusBar.bi, line.bars.length - 1)
+                    }
+                    playhead={
+                      !!playheadBar &&
+                      li === playheadBar.li &&
+                      bi === playheadBar.bi
                     }
                   />
                 ))}
