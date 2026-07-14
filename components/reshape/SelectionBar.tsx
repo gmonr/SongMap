@@ -8,7 +8,8 @@ import { useState, type ReactNode } from "react";
  * picking something up never reflows the bars under the user's finger, and
  * the ◀ ▶ targets are full thumb-sized. One bar serves every mode; modes
  * with more than move/clear (Chords: insert, delete, beat dots) pass their
- * extra actions as a second `tools` row.
+ * extra actions as a second `tools` row, and selections with no move gesture
+ * at all (Rows' bar selection) omit `onMove` to hide the arrows.
  *
  * When `edit` is given, a ✎ button swaps the whole bar for one inline input
  * editing the selection's text — the only place reshape ever opens the
@@ -29,13 +30,14 @@ export function SelectionBar({
 }: {
   /** What is picked up, e.g. the chord symbol or the lyric phrase. */
   title: string;
-  /** What ◀ ▶ will do to it. */
+  /** What the bar's actions will do to it. */
   subtitle: string;
-  canLeft: boolean;
-  canRight: boolean;
+  canLeft?: boolean;
+  canRight?: boolean;
   /** Verb for the arrows' aria-labels, e.g. "Move chord". */
-  moveLabel: string;
-  onMove: (dir: -1 | 1) => void;
+  moveLabel?: string;
+  /** Move the selection one bar; omit to hide the ◀ ▶ arrows entirely. */
+  onMove?: (dir: -1 | 1) => void;
   onClear: () => void;
   /** Optional second row of mode-specific actions. */
   tools?: ReactNode;
@@ -112,24 +114,28 @@ export function SelectionBar({
                 ✎
               </button>
             )}
-            <button
-              type="button"
-              disabled={!canLeft}
-              onClick={() => onMove(-1)}
-              aria-label={`${moveLabel} left`}
-              className={arrowCls}
-            >
-              ◀
-            </button>
-            <button
-              type="button"
-              disabled={!canRight}
-              onClick={() => onMove(1)}
-              aria-label={`${moveLabel} right`}
-              className={arrowCls}
-            >
-              ▶
-            </button>
+            {onMove && (
+              <>
+                <button
+                  type="button"
+                  disabled={!canLeft}
+                  onClick={() => onMove(-1)}
+                  aria-label={`${moveLabel} left`}
+                  className={arrowCls}
+                >
+                  ◀
+                </button>
+                <button
+                  type="button"
+                  disabled={!canRight}
+                  onClick={() => onMove(1)}
+                  aria-label={`${moveLabel} right`}
+                  className={arrowCls}
+                >
+                  ▶
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={onClear}

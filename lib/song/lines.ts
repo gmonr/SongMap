@@ -1,8 +1,9 @@
 /**
  * Structural row (Line) edits for the reshape view: merge a row into the next,
- * or break a row in two at a bar boundary. Together these cover any row layout,
- * since a section's bars are a fixed sequence and "rows" are just where that
- * sequence is partitioned.
+ * break a row in two at a bar boundary, or add/remove a bar within a row.
+ * Merge + break together cover any row layout, since a section's bars are a
+ * fixed sequence and "rows" are just where that sequence is partitioned;
+ * insert/delete change the sequence itself.
  *
  * The subtlety is that `LyricSpan.bar` is a *positional index* into its line's
  * `bars` array (see lib/song/types.ts) — a lyric is glued to a bar only by
@@ -59,5 +60,63 @@ export function splitLine(lines: Line[], li: number, at: number): Line[] {
   const cells = toDense(line);
   const out = [...lines];
   out.splice(li, 1, fromDense(cells.slice(0, at)), fromDense(cells.slice(at)));
+  return out;
+}
+
+/**
+ * Insert a new empty placeholder bar (one "" chord spanning `totalBeats` —
+ * the editor's empty-bar shape, rendered "—") at index `bi` of line `li`.
+ * `bi` may be 0..bars.length, so "before the first bar" and "after the last"
+ * both work. Lyric indices re-map via toDense/fromDense. Same-reference
+ * no-op on bad coords.
+ */
+export function insertBar(
+  lines: Line[],
+  li: number,
+  bi: number,
+  totalBeats: number
+): Line[] {
+  const line = lines[li];
+  if (!line || bi < 0 || bi > line.bars.length) return lines;
+  const cells = toDense(line);
+  cells.splice(bi, 0, {
+    bar: { chords: [{ sym: "", beats: totalBeats }] },
+    lyric: "",
+  });
+  const out = [...lines];
+  out.splice(li, 1, fromDense(cells));
+  return out;
+}
+
+/**
+ * Delete bar `bi` of line `li`. Its lyric merges into the previous bar's
+ * (appended after a space); deleting the row's first bar pushes the lyric
+ * onto the following bar instead, so words never vanish while the row still
+ * has bars. Deleting a row's only bar removes the whole row (and whatever
+ * lyric it carried — the chip shows it, and undo restores it). Same-reference
+ * no-op on bad coords.
+ */
+export function deleteBar(lines: Line[], li: number, bi: number): Line[] {
+  const line = lines[li];
+  if (!line || bi < 0 || bi >= line.bars.length) return lines;
+  const out = [...lines];
+  if (line.bars.length === 1) {
+    out.splice(li, 1);
+    return out;
+  }
+  const cells = toDense(line);
+  const [removed] = cells.splice(bi, 1);
+  if (removed.lyric !== "") {
+    const heir = Math.max(0, bi - 1);
+    const joined =
+      heir < bi
+        ? [cells[heir].lyric, removed.lyric]
+        : [removed.lyric, cells[heir].lyric];
+    cells[heir] = {
+      ...cells[heir],
+      lyric: joined.filter((t) => t !== "").join(" "),
+    };
+  }
+  out.splice(li, 1, fromDense(cells));
   return out;
 }
