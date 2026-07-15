@@ -15,6 +15,11 @@ describe("buildRelayUrl", () => {
       `https://r.jina.ai/${target}`
     );
   });
+
+  it("returns the template unchanged when it has no placeholder", () => {
+    const noPlaceholder = "https://relay.example/raw?url=";
+    expect(buildRelayUrl(noPlaceholder, target)).toBe(noPlaceholder);
+  });
 });
 
 describe("looksLikeUgPage", () => {
