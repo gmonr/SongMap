@@ -30,18 +30,33 @@ export async function fetchUgPage(url: string): Promise<string> {
     res = await fetch(url, {
       headers: {
         "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
       },
       cache: "no-store",
       redirect: "follow",
       signal: AbortSignal.timeout(10_000),
     });
-  } catch {
-    throw new UGFetchError("Could not reach Ultimate Guitar.");
+  } catch (e) {
+    const timedOut =
+      e instanceof DOMException &&
+      (e.name === "TimeoutError" || e.name === "AbortError");
+    throw new UGFetchError(
+      timedOut ? "the request timed out" : "the connection failed"
+    );
   }
   if (!res.ok) {
-    throw new UGFetchError(`Ultimate Guitar responded with ${res.status}.`);
+    throw new UGFetchError(
+      res.status === 403
+        ? "they returned 403, blocking this server"
+        : `they returned HTTP ${res.status}`
+    );
   }
   return res.text();
 }
