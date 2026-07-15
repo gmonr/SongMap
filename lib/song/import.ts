@@ -45,6 +45,24 @@ const TAB_LINE_RE = /^\s*[eEADGBb]\s*\|[-0-9hpbrxs~/\\^()|. ]+$/;
 /** "| Am . . . | F . G . |" — pipes are real bar lines; dots are beats. */
 const PIPE_LINE_RE = /^\s*\|.*\|?\s*$/;
 
+/**
+ * UltimateGuitarParser trims the lyrics of the *last* chord/lyric chunk on
+ * every line, so when the last chord sits above a word boundary ("he │soñado")
+ * the leading space is lost and the chunk becomes indistinguishable from a
+ * genuine mid-word split ("de│seo"). Mirror the upstream method minus the
+ * lyric trim — whitespace is normalized later when lyrics land in bars.
+ */
+class SpacePreservingUGParser extends UltimateGuitarParser {
+  parseLyricsWithChords(chordsLine: string, lyricsLine: string): void {
+    const consumed = this.processCharacters(chordsLine, lyricsLine);
+    if (!this.chordLyricsPair) return;
+    this.chordLyricsPair.lyrics += lyricsLine.substring(consumed);
+    this.chordLyricsPair.chords = this.chordLyricsPair.chords.trim();
+    // Upstream appends pending "x3" repeat notation here; not in the .d.ts.
+    (this as unknown as { applyRepeatNotation(): void }).applyRepeatNotation();
+  }
+}
+
 function looksLikeChordPro(text: string): boolean {
   // Directives like {title: ...} / {start_of_verse} / {soc}
   if (/^\s*\{[a-z_]+(?::[^}]*)?\}\s*$/im.test(text)) return true;
@@ -243,7 +261,7 @@ export function importChordSheet(
   try {
     song = chordpro
       ? new ChordProParser().parse(normalized)
-      : new UltimateGuitarParser({ preserveWhitespace: false }).parse(
+      : new SpacePreservingUGParser({ preserveWhitespace: false }).parse(
           normalized
         );
   } catch (e) {
