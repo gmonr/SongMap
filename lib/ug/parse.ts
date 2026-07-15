@@ -14,25 +14,51 @@ export class UGParseError extends Error {}
 
 /* ---------------------------------------------------------------- */
 
+// The XML five plus the named entities UG actually embeds inside song data
+// (it stores non-ASCII text entity-encoded, e.g. "Man&aacute;"): the Latin-1
+// accented letters and common punctuation.
 const NAMED_ENTITIES: Record<string, string> = {
   quot: '"',
   amp: "&",
   lt: "<",
   gt: ">",
   apos: "'",
+  nbsp: " ",
+  aacute: "á", agrave: "à", acirc: "â", atilde: "ã", auml: "ä", aring: "å",
+  Aacute: "Á", Agrave: "À", Acirc: "Â", Atilde: "Ã", Auml: "Ä", Aring: "Å",
+  aelig: "æ", AElig: "Æ", ccedil: "ç", Ccedil: "Ç",
+  eacute: "é", egrave: "è", ecirc: "ê", euml: "ë",
+  Eacute: "É", Egrave: "È", Ecirc: "Ê", Euml: "Ë",
+  iacute: "í", igrave: "ì", icirc: "î", iuml: "ï",
+  Iacute: "Í", Igrave: "Ì", Icirc: "Î", Iuml: "Ï",
+  ntilde: "ñ", Ntilde: "Ñ",
+  oacute: "ó", ograve: "ò", ocirc: "ô", otilde: "õ", ouml: "ö", oslash: "ø",
+  Oacute: "Ó", Ograve: "Ò", Ocirc: "Ô", Otilde: "Õ", Ouml: "Ö", Oslash: "Ø",
+  uacute: "ú", ugrave: "ù", ucirc: "û", uuml: "ü",
+  Uacute: "Ú", Ugrave: "Ù", Ucirc: "Û", Uuml: "Ü",
+  yacute: "ý", Yacute: "Ý", yuml: "ÿ", szlig: "ß",
+  iexcl: "¡", iquest: "¿", ordf: "ª", ordm: "º", deg: "°",
+  ndash: "–", mdash: "—", hellip: "…",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
 };
 
-function decodeEntities(s: string): string {
-  return s.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, (whole, body: string) => {
-    if (body[0] === "#") {
-      const code =
-        body[1] === "x" || body[1] === "X"
-          ? parseInt(body.slice(2), 16)
-          : parseInt(body.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+/** Decode HTML character references (named and numeric). Applied twice per
+ *  page: once to unwrap the js-store attribute, and again to the song text
+ *  inside it, which UG stores with its own layer of entities. */
+export function decodeHtmlEntities(s: string): string {
+  return s.replace(
+    /&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g,
+    (whole, body: string) => {
+      if (body[0] === "#") {
+        const code =
+          body[1] === "x" || body[1] === "X"
+            ? parseInt(body.slice(2), 16)
+            : parseInt(body.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+      }
+      return NAMED_ENTITIES[body] ?? whole;
     }
-    return NAMED_ENTITIES[body] ?? whole;
-  });
+  );
 }
 
 /**
@@ -45,7 +71,7 @@ export function extractJsStore(html: string): unknown {
     throw new UGParseError("No js-store data found in the page.");
   }
   try {
-    return JSON.parse(decodeEntities(m[1]));
+    return JSON.parse(decodeHtmlEntities(m[1]));
   } catch {
     throw new UGParseError("Could not decode the page data.");
   }
@@ -64,7 +90,7 @@ function get(obj: unknown, ...path: string[]): unknown {
 }
 
 const str = (v: unknown): string | undefined =>
-  typeof v === "string" && v.trim() ? v : undefined;
+  typeof v === "string" && v.trim() ? decodeHtmlEntities(v) : undefined;
 const num = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) ? v : undefined;
 
@@ -123,10 +149,13 @@ export interface UGTab {
   capo?: number;
 }
 
-/** Strip UG's [ch]/[tab] markers and normalize newlines. [Verse 1]-style
+/** Strip UG's [ch]/[tab] markers, decode entity-encoded song text
+ *  ("so&ntilde;ado" → "soñado"), and normalize newlines. [Verse 1]-style
  *  section headers are left alone — the chord-sheet parser consumes them. */
 export function stripUgMarkup(content: string): string {
-  return content.replace(/\[\/?(ch|tab)\]/g, "").replace(/\r\n?/g, "\n");
+  return decodeHtmlEntities(
+    content.replace(/\[\/?(ch|tab)\]/g, "")
+  ).replace(/\r\n?/g, "\n");
 }
 
 /** Read the chord sheet and metadata from a tab page's store. */
