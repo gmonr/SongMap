@@ -151,12 +151,17 @@ export async function fetchUgPage(url: string): Promise<string> {
     : FREE_RELAYS;
 
   for (const relay of relays) {
-    try {
-      return await attempt(
-        buildRelayUrl(relay.template, url),
-        relay.headers ?? {},
-        relay.timeoutMs
+    const relayUrl = buildRelayUrl(relay.template, url);
+    if (relayUrl === relay.template) {
+      // Nothing was substituted — a UG_PROXY_TEMPLATE without a placeholder
+      // would silently query the proxy with no target.
+      failures.push(
+        `${relay.label}: the template is missing the {url} placeholder`
       );
+      continue;
+    }
+    try {
+      return await attempt(relayUrl, relay.headers ?? {}, relay.timeoutMs);
     } catch (e) {
       failures.push(`${relay.label}: ${msgOf(e)}`);
     }

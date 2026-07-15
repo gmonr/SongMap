@@ -130,6 +130,26 @@ describe("parseSearchResults", () => {
     ).toEqual([]);
   });
 
+  it("decodes entity-encoded names ('Man&aacute;' → 'Maná')", () => {
+    const results = parseSearchResults({
+      store: {
+        page: {
+          data: {
+            results: [
+              {
+                type: "Chords",
+                song_name: "Oye Mi Amor",
+                artist_name: "Man&aacute;",
+                tab_url: "https://tabs.ultimate-guitar.com/tab/mana/oye-1",
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(results[0].artistName).toBe("Maná");
+  });
+
   it("skips entries with missing fields or non-https URLs", () => {
     const results = parseSearchResults({
       store: {
@@ -155,6 +175,15 @@ describe("stripUgMarkup", () => {
   it("removes [ch]/[tab] markers and normalizes newlines", () => {
     expect(stripUgMarkup("[tab][ch]C[/ch] x[/tab]\r\nnext\rline")).toBe(
       "C x\nnext\nline"
+    );
+  });
+
+  it("decodes UG's entity-encoded song text", () => {
+    expect(stripUgMarkup("como te he so&ntilde;ado")).toBe(
+      "como te he soñado"
+    );
+    expect(stripUgMarkup("coraz&oacute;n &iquest;qu&eacute;? &#191;")).toBe(
+      "corazón ¿qué? ¿"
     );
   });
 
