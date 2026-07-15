@@ -6,7 +6,12 @@
  * requests). Failures come back as friendly strings rather than throws —
  * thrown server-action errors get redacted to a digest in production.
  */
-import { fetchUgPage, searchUrl, MAX_QUERY_LENGTH } from "@/lib/ug/fetch";
+import {
+  fetchUgPage,
+  searchUrl,
+  MAX_QUERY_LENGTH,
+  UGFetchError,
+} from "@/lib/ug/fetch";
 import {
   extractJsStore,
   parseSearchResults,
@@ -15,10 +20,15 @@ import {
   type UGSearchResult,
 } from "@/lib/ug/parse";
 
-const UNREACHABLE =
-  "Couldn't reach Ultimate Guitar. Try again, or paste the sheet manually.";
 const FORMAT_CHANGED =
   "Ultimate Guitar changed their page format — paste the sheet manually.";
+
+/** "Couldn't reach ..." with the concrete failure (403 / timeout / ...) so
+ *  problems are diagnosable from the UI, not just a generic shrug. */
+function unreachable(e: unknown): string {
+  const detail = e instanceof UGFetchError ? ` (${e.message})` : "";
+  return `Couldn't reach Ultimate Guitar${detail}. Try again, or paste the sheet manually.`;
+}
 
 export interface UGSearchState {
   results: UGSearchResult[];
@@ -34,8 +44,8 @@ export async function searchUltimateGuitar(
   let html: string;
   try {
     html = await fetchUgPage(searchUrl(q));
-  } catch {
-    return { results: [], error: UNREACHABLE };
+  } catch (e) {
+    return { results: [], error: unreachable(e) };
   }
   try {
     return { results: parseSearchResults(extractJsStore(html)) };
@@ -69,8 +79,8 @@ export async function fetchUltimateGuitarTab(
   let html: string;
   try {
     html = await fetchUgPage(tabUrl);
-  } catch {
-    return { ok: false, error: UNREACHABLE };
+  } catch (e) {
+    return { ok: false, error: unreachable(e) };
   }
   try {
     const tab = parseTabPage(extractJsStore(html));
