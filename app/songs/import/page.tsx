@@ -27,9 +27,10 @@ export default async function ImportSongPage() {
       <div>
         <h1 className="text-xl font-bold">Import a song</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Paste a chord sheet — chords over lyrics (Ultimate Guitar style) or
-          ChordPro. Sections, chords, and lyrics are prefilled; bar counts are
-          a first guess for you to correct in the editor.
+          Search Ultimate Guitar and pick a result, or paste a chord sheet —
+          chords over lyrics (Ultimate Guitar style) or ChordPro. Sections,
+          chords, and lyrics are prefilled; bar counts are a first guess for
+          you to correct in the editor.
         </p>
       </div>
       <SongImporter canSave={canSave} />

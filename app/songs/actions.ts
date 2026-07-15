@@ -36,6 +36,17 @@ export interface ImportedSongInput {
   key: string | null;
   time_signature: string;
   data: SongData;
+  source_url?: string | null;
+  capo?: number | null;
+}
+
+function sanitizeSourceUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function createImportedSong(input: ImportedSongInput) {
@@ -62,6 +73,11 @@ export async function createImportedSong(input: ImportedSongInput) {
       key: input.key || "C",
       time_signature: input.time_signature || "4/4",
       data: input.data,
+      source_url: sanitizeSourceUrl(input.source_url),
+      capo:
+        typeof input.capo === "number" && input.capo > 0
+          ? Math.min(Math.trunc(input.capo), 12)
+          : 0,
     })
     .select("id")
     .single();
