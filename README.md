@@ -153,6 +153,26 @@ Without `.env.local` the app runs in **demo mode**: the bundled demo song
 (`/songs/demo`) shows the full song-map view, but nothing can be created or
 saved.
 
+### Ultimate Guitar search (`UG_PROXY_TEMPLATE`, optional)
+
+The import page can search Ultimate Guitar and pull a chord sheet directly.
+UG blocks many hosting providers' IP ranges with a 403; when a direct fetch
+fails, the app automatically retries through a few free public fetch relays.
+If those prove flaky, set `UG_PROXY_TEMPLATE` to route UG requests through a
+scraping API instead — `{url}` is replaced with the URI-encoded target page,
+`{rawUrl}` with the target verbatim:
+
+```
+# ScraperAPI (free tier ~1,000 requests/month)
+UG_PROXY_TEMPLATE=http://api.scraperapi.com/?api_key=YOUR_KEY&url={url}
+
+# scrape.do (free tier ~1,000 requests/month)
+UG_PROXY_TEMPLATE=https://api.scrape.do/?token=YOUR_TOKEN&url={url}
+```
+
+Privacy note: anything fetched through a relay or scraping API (the search
+terms and tab pages) passes through that third-party service.
+
 ## Notes
 
 - Minor keys are accepted (e.g. `Am`); numerals are computed relative to the
