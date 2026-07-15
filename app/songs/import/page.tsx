@@ -5,6 +5,10 @@ import { SongImporter } from "@/components/import/SongImporter";
 
 export const metadata = { title: "Import song · SongMap" };
 
+// The UG server actions invoked from this page may wait out a slow scraping
+// proxy (see lib/ug/fetch.ts); the default serverless budget is too tight.
+export const maxDuration = 60;
+
 export default async function ImportSongPage() {
   let canSave = false;
   if (isSupabaseConfigured) {
