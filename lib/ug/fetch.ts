@@ -40,8 +40,11 @@ export function looksLikeUgPage(html: string): boolean {
 }
 
 interface Relay {
+  /** Short name used in error messages so failures are attributable. */
+  label: string;
   template: string;
   headers?: Record<string, string>;
+  timeoutMs: number;
 }
 
 /** Free public fetchers, tried in order when UG blocks us directly and no
@@ -50,11 +53,21 @@ interface Relay {
  *  the others are plain fetchers from different IP ranges. */
 const FREE_RELAYS: Relay[] = [
   {
+    label: "jina.ai",
     template: "https://r.jina.ai/{rawUrl}",
     headers: { "X-Return-Format": "html" },
+    timeoutMs: 15_000,
   },
-  { template: "https://api.allorigins.win/raw?url={url}" },
-  { template: "https://api.codetabs.com/v1/proxy?quest={url}" },
+  {
+    label: "allorigins",
+    template: "https://api.allorigins.win/raw?url={url}",
+    timeoutMs: 15_000,
+  },
+  {
+    label: "codetabs",
+    template: "https://api.codetabs.com/v1/proxy?quest={url}",
+    timeoutMs: 15_000,
+  },
 ];
 
 /* ---------------------------------------------------------------- */
@@ -105,7 +118,10 @@ export async function fetchUgPage(url: string): Promise<string> {
     throw new UGFetchError("not an Ultimate Guitar URL");
   }
 
-  let directError: UGFetchError;
+  const failures: string[] = [];
+  const msgOf = (e: unknown) =>
+    e instanceof UGFetchError ? e.message : "the request failed";
+
   try {
     return await attempt(
       url,
@@ -123,30 +139,28 @@ export async function fetchUgPage(url: string): Promise<string> {
       10_000
     );
   } catch (e) {
-    directError =
-      e instanceof UGFetchError ? e : new UGFetchError("the request failed");
+    failures.push(msgOf(e));
   }
 
   const custom = process.env.UG_PROXY_TEMPLATE?.trim();
-  const relays: Relay[] = custom ? [{ template: custom }] : FREE_RELAYS;
+  // Scraping APIs retry against the target internally, so they need real
+  // patience; the free relays get less since there are several. Budgets are
+  // sized so the whole chain fits inside the import page's 60s maxDuration.
+  const relays: Relay[] = custom
+    ? [{ label: "your proxy", template: custom, timeoutMs: 45_000 }]
+    : FREE_RELAYS;
 
   for (const relay of relays) {
     try {
-      // Relays fetch (and sometimes render) the page themselves — slower
-      // than a direct hit, hence the longer timeout.
       return await attempt(
         buildRelayUrl(relay.template, url),
         relay.headers ?? {},
-        20_000
+        relay.timeoutMs
       );
-    } catch {
-      // Try the next relay; the direct error stays the headline.
+    } catch (e) {
+      failures.push(`${relay.label}: ${msgOf(e)}`);
     }
   }
 
-  throw new UGFetchError(
-    `${directError.message}, and the fallback relay${
-      relays.length === 1 ? "" : "s"
-    } failed too`
-  );
+  throw new UGFetchError(failures.join("; "));
 }
