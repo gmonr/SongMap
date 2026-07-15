@@ -7,6 +7,7 @@ import { KEYS, parseKey } from "@/lib/song/theory";
 import { beatsPerBar, type SongRow } from "@/lib/song/types";
 import { SongMap } from "@/components/song-map/SongMap";
 import { createImportedSong } from "@/app/songs/actions";
+import { UGSearch, type UGPick } from "@/components/import/UGSearch";
 
 const inputCls =
   "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none";
@@ -31,6 +32,8 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
   const [artist, setArtist] = useState("");
   const [key, setKey] = useState("");
   const [timeSignature, setTimeSignature] = useState("4/4");
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [capo, setCapo] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
@@ -59,11 +62,22 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
           key: effectiveKey,
           time_signature: timeSignature,
           tempo: null,
-          capo: 0,
+          capo: capo ?? 0,
           data: result.data,
-          source_url: null,
+          source_url: sourceUrl,
         }
       : null;
+
+  const applyPick = (tab: UGPick) => {
+    setText(tab.text);
+    // UG metadata is authoritative for a fetched sheet — set the user-facing
+    // fields directly (they stay editable).
+    setTitle(tab.title ?? "");
+    setArtist(tab.artist ?? "");
+    if (tab.key) setKey(tab.key);
+    setCapo(tab.capo ?? null);
+    setSourceUrl(tab.sourceUrl);
+  };
 
   const save = () => {
     if (!result || !hasContent) return;
@@ -76,6 +90,8 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
           key: effectiveKey,
           time_signature: timeSignature,
           data: result.data,
+          source_url: sourceUrl,
+          capo,
         });
       } catch {
         setError("Could not save the song. Are you still signed in?");
@@ -85,11 +101,20 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
 
   return (
     <div className="space-y-4">
-      {/* Paste box + metadata */}
+      {/* Search + paste box + metadata */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <UGSearch onPick={applyPick} />
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            // A cleared box starts a fresh song; hand-tweaks to a fetched
+            // sheet keep the attribution.
+            if (!e.target.value.trim()) {
+              setSourceUrl(null);
+              setCapo(null);
+            }
+          }}
           placeholder={PLACEHOLDER}
           rows={12}
           spellCheck={false}
@@ -185,9 +210,15 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
           {error && <p className="text-sm text-rose-600">{error}</p>}
         </div>
 
-        {result && result.warnings.length > 0 && (
+        {((result && result.warnings.length > 0) || (capo ?? 0) > 0) && (
           <ul className="mt-3 space-y-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {result.warnings.map((w, i) => (
+            {(capo ?? 0) > 0 && (
+              <li>
+                This sheet uses capo {capo} — chords are as played, not
+                concert pitch.
+              </li>
+            )}
+            {result?.warnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
           </ul>
