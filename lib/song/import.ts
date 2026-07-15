@@ -45,6 +45,24 @@ const TAB_LINE_RE = /^\s*[eEADGBb]\s*\|[-0-9hpbrxs~/\\^()|. ]+$/;
 /** "| Am . . . | F . G . |" — pipes are real bar lines; dots are beats. */
 const PIPE_LINE_RE = /^\s*\|.*\|?\s*$/;
 
+/**
+ * UltimateGuitarParser trims the lyrics of the *last* chord/lyric chunk on
+ * every line, so when the last chord sits above a word boundary ("he │soñado")
+ * the leading space is lost and the chunk becomes indistinguishable from a
+ * genuine mid-word split ("de│seo"). Mirror the upstream method minus the
+ * lyric trim — whitespace is normalized later when lyrics land in bars.
+ */
+class SpacePreservingUGParser extends UltimateGuitarParser {
+  parseLyricsWithChords(chordsLine: string, lyricsLine: string): void {
+    const consumed = this.processCharacters(chordsLine, lyricsLine);
+    if (!this.chordLyricsPair) return;
+    this.chordLyricsPair.lyrics += lyricsLine.substring(consumed);
+    this.chordLyricsPair.chords = this.chordLyricsPair.chords.trim();
+    // Upstream appends pending "x3" repeat notation here; not in the .d.ts.
+    (this as unknown as { applyRepeatNotation(): void }).applyRepeatNotation();
+  }
+}
+
 function looksLikeChordPro(text: string): boolean {
   // Directives like {title: ...} / {start_of_verse} / {soc}
   if (/^\s*\{[a-z_]+(?::[^}]*)?\}\s*$/im.test(text)) return true;
@@ -98,17 +116,41 @@ function parsePipeLine(text: string, beatsPerBar: number): Bar[] {
   return bars;
 }
 
+/**
+ * Spanish structure headers ("[I Estrofa]", "[Coro]") aren't in
+ * UltimateGuitarParser's English vocabulary, so it surfaces them as comment
+ * tags. A comment made of a known section word — optionally numbered on
+ * either side, roman or arabic ("I Estrofa", "Coro 2") — is a header.
+ */
+const SPANISH_HEADER_RE = new RegExp(
+  "^(?:[ivx0-9]+[.\\s]+)?" +
+    "(?:estrofa|verso|coro|estribillo|refr[aá]n|puente|interludio|" +
+    "intro(?:ducci[oó]n)?|instrumental|solo|final|salida|coda|pre[-\\s]?coro)" +
+    "(?:[.\\s]+[ivx0-9]+)?$",
+  "i"
+);
+
 /** Map a section label to a stable accent color. */
 function colorFor(label: string, index: number): string {
   const l = label.toLowerCase();
-  if (l.includes("chorus") && l.includes("pre")) return "teal";
-  if (l.includes("chorus")) return "amber";
-  if (l.includes("verse")) return "blue";
-  if (l.includes("bridge")) return "purple";
-  if (l.includes("intro") || l.includes("outro") || l.includes("end"))
+  if ((l.includes("chorus") || l.includes("coro")) && l.includes("pre"))
+    return "teal";
+  if (l.includes("chorus") || l.includes("coro") || l.includes("estribillo"))
+    return "amber";
+  if (l.includes("verse") || l.includes("estrofa") || l.includes("verso"))
+    return "blue";
+  if (l.includes("bridge") || l.includes("puente")) return "purple";
+  if (
+    l.includes("intro") ||
+    l.includes("outro") ||
+    l.includes("end") ||
+    l.includes("final") ||
+    l.includes("salida") ||
+    l.includes("coda")
+  )
     return "slate";
   if (l.includes("solo") || l.includes("instrumental")) return "rose";
-  if (l.includes("interlude")) return "teal";
+  if (l.includes("interlude") || l.includes("interludio")) return "teal";
   return SECTION_COLOR_NAMES[index % SECTION_COLOR_NAMES.length];
 }
 
@@ -243,7 +285,7 @@ export function importChordSheet(
   try {
     song = chordpro
       ? new ChordProParser().parse(normalized)
-      : new UltimateGuitarParser({ preserveWhitespace: false }).parse(
+      : new SpacePreservingUGParser({ preserveWhitespace: false }).parse(
           normalized
         );
   } catch (e) {
@@ -275,6 +317,14 @@ export function importChordSheet(
             kind.charAt(0).toUpperCase() + kind.slice(1);
           builder.startSection(label);
           handled = true;
+        } else if (!chordpro && name === "comment") {
+          // UG headers outside the parser's English vocabulary ("[Coro]")
+          // come through as comments; ChordPro comments are prose, skip them.
+          const label = item.value?.trim();
+          if (label && SPANISH_HEADER_RE.test(label)) {
+            builder.startSection(label);
+            handled = true;
+          }
         }
         // end_of_* / metadata tags need no action: metadata is read off the
         // Song object below, and sections close when the next one starts.
