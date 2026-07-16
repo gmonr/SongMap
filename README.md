@@ -156,6 +156,56 @@ Nashville-number display.
   `lib/ug/__tests__/`; the section-header and word-boundary fixes in
   `lib/song/__tests__/import.test.ts`.
 
+## Features (Phase 7)
+
+Six gaps between the chord map and how the lyrics actually sit on it,
+closed in one pass:
+
+- **Tempo sources** — the Tempo field (importer and editor) now fills three
+  ways: the UG import extracts the tab's BPM when the page carries one, a
+  **tap-tempo** button averages your taps, and a **Deezer lookup** (free,
+  no API key) suggests the analyzed BPM of the matched track. Deezer
+  results show as a confirm-to-use chip naming the matched track — never
+  auto-applied, since Deezer's analysis is sometimes halved or doubled.
+  Privacy note: the lookup sends the title/artist to Deezer's public API.
+- **Word→beat anchors (lyrics track chord resizes)** — in reshape's Lyrics
+  mode, tap a word, then a beat on its dot strip to pin the word to that
+  beat of its bar. Pinned words track the chords: moving a beat split in
+  Chords mode drags along any word anchored to that boundary. Anchors are
+  sparse (`LyricSpan.anchors`) — most words stay unanchored and flow
+  between the pinned ones — and songs without anchors render exactly as
+  before. A load-time normalizer (`lib/song/normalize.ts`) drops any
+  invalid anchor data from old or hand-edited blobs.
+- **Syllable emphasis** — an anchor can start mid-word: when a word is
+  selected, letter gaps above the beat dots pick the syllable
+  ("so·ñado"), and the anchored syllable renders bold in the section's
+  accent color, marking where the beat lands.
+- **Anacrusis (pickup words)** — select a word and tap **↰ pickup**: the
+  words before it are marked as sung ahead of the bar (`LyricSpan.lead`)
+  and render hanging left of the bar, italic and dimmed. Presentational
+  only — playback timing is unchanged.
+- **Merge & link duplicate sections** — sections are fingerprinted by
+  their flattened chord sequence (`lib/song/fingerprint.ts`; row layout is
+  presentation, so it's ignored). Imports regularly emit "Coro" and
+  "Coro 2" as separate identical sections; a banner in reshape and the
+  editor offers **Merge into one** (arrangement refs repoint, duplicates
+  delete, and every later edit applies to all instances) for true
+  duplicates, and **Link chords** (`same as …`, rendered collapsed) for
+  same-chords-different-lyrics sections like verses. Suggestions are
+  dismissible; nothing applies without a tap.
+- **Edit-time propagation** — fix a bar once, fix it everywhere. After a
+  bar-local chord edit in reshape (rename, beat split, insert, delete), if
+  other bars still match what the edited bar looked like *before*, a
+  banner docks above the selection bar — "3 more bars look like this one
+  did — make them G G/B too?" — and one tap stamps the new chords onto all
+  of them, leaving their lyrics and anchors alone. Undoable like any
+  reshape edit; empty `—` bars never trigger it (they mean "same as
+  before", not "same music"), and any other kind of edit clears the offer.
+- **Tests** — the anchor/normalize/fingerprint ops in
+  `lib/song/__tests__/` (`anchors`, `normalize`, `fingerprint`), the tempo
+  helpers in `lib/tempo/__tests__/`, and the UG BPM extraction in
+  `lib/ug/__tests__/`.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats
@@ -165,7 +215,10 @@ don't encode). See `lib/song/types.ts`:
 SongData
 ├─ sections: Record<id, { label, color, lines: Line[] }>
 │    Line = { bars: { chords: { sym, beats }[] }[],
-│             lyrics: { text, bar }[] }
+│             lyrics: LyricSpan[] }
+│    LyricSpan = { text, bar,
+│                  anchors?: { word, beat, char? }[],  // word→beat pins
+│                  lead? }                             // pickup-word count
 └─ arrangement: { ref, instanceLabel, repeat?, sameChordsAs? }[]
 ```
 

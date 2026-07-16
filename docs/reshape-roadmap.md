@@ -114,3 +114,13 @@ in the SelectionBar move it one word at a time (`setWordBoundary` at
 placement slots — tapping one puts the break exactly there. Gap taps with
 no break selected do nothing, so no tap ever guesses a direction. The
 nearest-edge `boundaryFor` heuristic is gone; no new pure ops were needed.
+
+## Later additions (2026-07, chord-lyric sync — done)
+
+Reshape grew past this roadmap in the chord-lyric sync pass (README
+"Features (Phase 7)"): word→beat anchors and syllable picks in Lyrics mode
+(tap a word, pin it to a beat; pinned words follow beat-split moves), ↰
+pickup for anacrusis, duplicate-section merge/link banners, and edit-time
+propagation of bar-local chord fixes to matching bars. All follow the
+grammar set here: taps never type, pure same-reference-no-op ops, actions
+on the docked SelectionBar, everything undoable.
