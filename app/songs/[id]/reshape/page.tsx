@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { ReshapeView } from "@/components/reshape/ReshapeView";
 import { DEMO_SONG_ID } from "@/lib/song/demo";
+import { normalizeSongData } from "@/lib/song/normalize";
 import type { SongRow } from "@/lib/song/types";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +36,7 @@ export default async function ReshapeSongPage({
     .single<SongRow>();
 
   if (!song) notFound();
+  song.data = normalizeSongData(song.data);
 
   return (
     <ReshapeView

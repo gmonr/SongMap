@@ -132,3 +132,51 @@ describe("shiftLyric", () => {
     expect(shiftLyric(l, 1, 1)).toBe(l); // no lyric at source
   });
 });
+
+describe("word→beat anchors across lyric ops", () => {
+  it("setWordBoundary keeps staying words' anchors, reindexing the right bar", () => {
+    const l = line([bar("C"), bar("F")], {
+      0: { text: "oh what a", anchors: [{ word: 1, beat: 2 }] },
+      1: { text: "night we had", anchors: [{ word: 1, beat: 1 }] },
+    });
+    // Boundary moves right by one: "night" transfers to the left bar.
+    const next = setWordBoundary(l, 1, 4);
+    expect(next.lyrics.find((s) => s.bar === 0)?.anchors).toEqual([
+      { word: 1, beat: 2 }, // "what" stayed put
+    ]);
+    expect(next.lyrics.find((s) => s.bar === 1)?.anchors).toEqual([
+      { word: 0, beat: 1 }, // "we" reindexed from word 1 to 0
+    ]);
+  });
+
+  it("setWordBoundary un-anchors words that changed bars", () => {
+    const l = line([bar("C"), bar("F")], {
+      0: { text: "oh what a", anchors: [{ word: 2, beat: 3 }] },
+      1: "night",
+    });
+    // "a" moves into the right bar: its beat belonged to the left bar.
+    const next = setWordBoundary(l, 1, 2);
+    expect(next.lyrics.find((s) => s.bar === 0)?.anchors).toBeUndefined();
+    expect(next.lyrics.find((s) => s.bar === 1)?.anchors).toBeUndefined();
+  });
+
+  it("setBarLyric keeps anchors on a same-word-count retype, drops otherwise", () => {
+    const l = line([bar("C")], {
+      0: { text: "oh whut a night", anchors: [{ word: 1, beat: 1 }] },
+    });
+    const fixed = setBarLyric(l, 0, "oh what a night");
+    expect(fixed.lyrics[0].anchors).toEqual([{ word: 1, beat: 1 }]);
+    const rewritten = setBarLyric(l, 0, "completely different words here now");
+    expect(rewritten.lyrics[0].anchors).toBeUndefined();
+  });
+
+  it("shiftLyric carries a phrase's anchors to its new bar", () => {
+    const l = line([bar("C"), bar("F")], {
+      0: { text: "hey now", anchors: [{ word: 1, beat: 2 }] },
+    });
+    const next = shiftLyric(l, 0, 1);
+    expect(next.lyrics).toEqual([
+      { text: "hey now", bar: 1, anchors: [{ word: 1, beat: 2 }] },
+    ]);
+  });
+});

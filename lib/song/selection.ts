@@ -6,7 +6,9 @@ export type ReshapeSelection =
   | { kind: "phrase"; sectionId: string; li: number; bar: number }
   | { kind: "bar"; sectionId: string; li: number; bi: number }
   /** The │ break between bars `boundary - 1` and `boundary` of a line. */
-  | { kind: "break"; sectionId: string; li: number; boundary: number };
+  | { kind: "break"; sectionId: string; li: number; boundary: number }
+  /** Word `word` of bar `bar`'s phrase, for pinning it to a beat. */
+  | { kind: "word"; sectionId: string; li: number; bar: number; word: number };
 
 /** Mirror of ModeToggle's ReshapeMode, kept here so lib code stays pure. */
 export type ReshapeModeId = "rows" | "lyrics" | "chords";
@@ -23,6 +25,7 @@ const HOME_MODE: Record<ReshapeSelection["kind"], ReshapeModeId> = {
   bar: "rows",
   phrase: "lyrics",
   break: "lyrics",
+  word: "lyrics",
   chord: "chords",
 };
 
@@ -39,7 +42,7 @@ export function selectionAnchor(
   const line = data.sections[sel.sectionId]?.lines[sel.li];
   if (!line || line.bars.length === 0) return null;
   const raw =
-    sel.kind === "phrase"
+    sel.kind === "phrase" || sel.kind === "word"
       ? sel.bar
       : sel.kind === "break"
         ? sel.boundary

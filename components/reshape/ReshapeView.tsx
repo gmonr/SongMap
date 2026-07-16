@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { setBarBeatBoundary, setWordAnchor } from "@/lib/song/anchors";
 import {
   chordMoveTarget,
   deleteChord,
@@ -10,12 +11,12 @@ import {
   moveChord,
   nearestChordSym,
   renameChord,
-  setBeatBoundary,
 } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
 import { deleteBar, insertBar } from "@/lib/song/lines";
 import {
   lineWordLayout,
+  lyricWords,
   setBarLyric,
   setWordBoundary,
   shiftLyric,
@@ -31,6 +32,7 @@ import {
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
+import { AnchorDots } from "./AnchorDots";
 import { lyricFor } from "./BarChip";
 import { BeatDots } from "./BeatDots";
 import { ChordsSection } from "./ChordsSection";
@@ -65,8 +67,10 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       to place it there. Tap a bar&apos;s{" "}
       <b className="font-semibold text-slate-600">chord label</b> to pick up
       its whole phrase (◀ ▶ shifts it a bar,{" "}
-      <b className="font-semibold text-slate-600">✎</b> retypes it). To move
-      words between rows, merge the rows in Rows mode first.
+      <b className="font-semibold text-slate-600">✎</b> retypes it). Tap a{" "}
+      <b className="font-semibold text-slate-600">word</b> to pin it to a beat
+      of its bar — pinned words track the chords when beat splits move. To
+      move words between rows, merge the rows in Rows mode first.
     </>
   ),
   chords: (
@@ -206,6 +210,15 @@ export function ReshapeView({
       : setWordBoundary(line, boundary, start + dir);
   };
 
+  // A selected word's current anchor, so ◀ ▶ can nudge it a beat at a time
+  // and the AnchorDots can highlight it.
+  const selAnchorBeat =
+    sel?.kind === "word"
+      ? (selLines?.[sel.li]?.lyrics
+          .find((s) => s.bar === sel.bar)
+          ?.anchors?.find((a) => a.word === sel.word)?.beat ?? null)
+      : null;
+
   const canMove = (dir: -1 | 1): boolean => {
     if (!sel || !selLines || sel.kind === "bar") return false;
     if (sel.kind === "chord") {
@@ -216,11 +229,28 @@ export function ReshapeView({
     if (sel.kind === "break") {
       return movedBreak(selLines[sel.li], sel.boundary, dir) !== selLines[sel.li];
     }
+    if (sel.kind === "word") {
+      return (
+        selAnchorBeat !== null &&
+        setWordAnchor(selLines[sel.li], sel.bar, sel.word, selAnchorBeat + dir) !==
+          selLines[sel.li]
+      );
+    }
     return shiftLyric(selLines[sel.li], sel.bar, dir) !== selLines[sel.li];
   };
 
   const moveSel = (dir: -1 | 1) => {
     if (!sel || !selLines || sel.kind === "bar") return;
+    if (sel.kind === "word") {
+      if (selAnchorBeat === null) return;
+      applyToSection(sel.sectionId, (lines) => {
+        const next = setWordAnchor(lines[sel.li], sel.bar, sel.word, selAnchorBeat + dir);
+        return next === lines[sel.li]
+          ? lines
+          : lines.map((l, i) => (i === sel.li ? next : l));
+      });
+      return;
+    }
     if (sel.kind === "chord") {
       const target = chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats);
       if (!target) return;
@@ -263,7 +293,9 @@ export function ReshapeView({
           ? selBar?.chords.map((c) => c.sym).filter(Boolean).join(" ") || "—"
           : sel.kind === "break"
             ? breakTitle(selLines[sel.li], sel.boundary)
-            : lyricFor(selLines[sel.li], sel.bar) || "—"
+            : sel.kind === "word"
+              ? lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] || "—"
+              : lyricFor(selLines[sel.li], sel.bar) || "—"
       : "";
 
   // Chord tools (P1). Taps never type, so inserts seed their symbol from
@@ -336,18 +368,29 @@ export function ReshapeView({
           : undefined
       : undefined;
 
+  // Moving a beat split also drags along any word anchored to it — that's
+  // the "lyrics follow the resized chord" behavior (see setBarBeatBoundary).
   const setBoundary = (ci: number, chordBeats: number) => {
     if (sel?.kind !== "chord") return;
     applyToSection(sel.sectionId, (lines) => {
-      const barHere = lines[sel.li]?.bars[sel.bi];
-      if (!barHere) return lines;
-      const next = setBeatBoundary(barHere, ci, chordBeats);
-      if (next === barHere) return lines;
-      return lines.map((l, i) =>
-        i === sel.li
-          ? { ...l, bars: l.bars.map((b, j) => (j === sel.bi ? next : b)) }
-          : l
-      );
+      const line = lines[sel.li];
+      if (!line) return lines;
+      const next = setBarBeatBoundary(line, sel.bi, ci, chordBeats);
+      return next === line
+        ? lines
+        : lines.map((l, i) => (i === sel.li ? next : l));
+    });
+  };
+
+  // A selected word's beat dots: tap a beat to pin the word there, tap its
+  // current beat to un-pin.
+  const setAnchor = (beat: number | null) => {
+    if (sel?.kind !== "word") return;
+    applyToSection(sel.sectionId, (lines) => {
+      const next = setWordAnchor(lines[sel.li], sel.bar, sel.word, beat);
+      return next === lines[sel.li]
+        ? lines
+        : lines.map((l, i) => (i === sel.li ? next : l));
     });
   };
 
@@ -418,6 +461,15 @@ export function ReshapeView({
       )
     ) : undefined;
 
+  const wordTools =
+    sel?.kind === "word" && selLines?.[sel.li]?.bars[sel.bar] ? (
+      <AnchorDots
+        bar={selLines[sel.li].bars[sel.bar]}
+        anchorBeat={selAnchorBeat}
+        onSet={setAnchor}
+      />
+    ) : undefined;
+
   const barTools =
     sel?.kind === "bar" ? (
       <>
@@ -478,7 +530,7 @@ export function ReshapeView({
     <div
       className={`reshape-surface select-none space-y-4 ${
         sel
-          ? sel.kind === "chord" || sel.kind === "bar"
+          ? sel.kind === "chord" || sel.kind === "bar" || sel.kind === "word"
             ? "pb-36"
             : "pb-24"
           : ""
@@ -598,7 +650,9 @@ export function ReshapeView({
                 ? `b:${sel.sectionId}:${sel.li}:${sel.bi}`
                 : sel.kind === "break"
                   ? `k:${sel.sectionId}:${sel.li}:${sel.boundary}`
-                  : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
+                  : sel.kind === "word"
+                    ? `w:${sel.sectionId}:${sel.li}:${sel.bar}:${sel.word}`
+                    : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
           }
           title={selTitle}
           subtitle={
@@ -610,7 +664,11 @@ export function ReshapeView({
                 ? "＋ add empty bar · 🗑 delete"
                 : sel.kind === "break"
                   ? "◀ ▶ move the break one word"
-                  : "◀ ▶ shift it one bar"
+                  : sel.kind === "word"
+                    ? selAnchorBeat === null
+                      ? "tap a beat dot to pin this word"
+                      : "◀ ▶ move the pin one beat"
+                    : "◀ ▶ shift it one bar"
           }
           canLeft={canMove(-1)}
           canRight={canMove(1)}
@@ -619,11 +677,18 @@ export function ReshapeView({
               ? "Move chord"
               : sel.kind === "break"
                 ? "Move break"
-                : "Shift phrase"
+                : sel.kind === "word"
+                  ? "Move pin"
+                  : "Shift phrase"
           }
-          onMove={sel.kind === "bar" ? undefined : moveSel}
+          onMove={
+            sel.kind === "bar" ||
+            (sel.kind === "word" && selAnchorBeat === null)
+              ? undefined
+              : moveSel
+          }
           onClear={() => setSel(null)}
-          tools={chordTools ?? barTools}
+          tools={chordTools ?? barTools ?? wordTools}
           edit={selEdit}
         />
       )}

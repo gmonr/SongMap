@@ -117,9 +117,7 @@ export function SectionCard({
       {expanded && (
         <div className="space-y-4 px-4 pb-4 pt-3">
           {def.lines.map((line, li) => {
-            const lyricByBar = new Map(
-              line.lyrics.map((s) => [s.bar, s.text])
-            );
+            const spanByBar = new Map(line.lyrics.map((s) => [s.bar, s]));
             return (
               <div
                 key={li}
@@ -129,7 +127,7 @@ export function SectionCard({
                   <BarCell
                     key={bi}
                     bar={bar}
-                    lyric={lyricByBar.get(bi)}
+                    span={spanByBar.get(bi)}
                     showLyrics={showLyrics}
                     songKey={songKey}
                     displayKey={displayKey}

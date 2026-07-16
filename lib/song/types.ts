@@ -21,11 +21,28 @@ export interface Bar {
   chords: ChordCell[];
 }
 
+/**
+ * Pin one word of a lyric phrase to a beat of its bar, so lyrics track the
+ * chord/beat layout instead of just hanging under the bar. Anchors are
+ * sparse: most words stay unanchored and flow between the anchored ones.
+ * Within a span, anchors are sorted by `word` with strictly increasing
+ * `beat` (words can't sing out of order).
+ */
+export interface WordAnchor {
+  /** Index into the phrase's words (whitespace-split, see lyricWords). */
+  word: number;
+  /** 0-based beat within the bar, an integer < the bar's total beats. */
+  beat: number;
+}
+
 /** A lyric phrase aligned to a bar (by index within its line). */
 export interface LyricSpan {
   text: string;
   /** Index into the line's `bars` array. */
   bar: number;
+  /** Beat anchors for individual words; absent = the whole phrase just
+   *  sits under the bar (the pre-anchor rendering). */
+  anchors?: WordAnchor[];
 }
 
 /** One row of bars in the grid, with lyrics aligned underneath. */

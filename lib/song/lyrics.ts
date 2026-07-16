@@ -11,7 +11,19 @@
  * taps from dirtying the save state).
  */
 import { fromDense, toDense } from "./lines";
-import type { Line } from "./types";
+import type { Bar, Line, WordAnchor } from "./types";
+
+/** Anchors filtered to what a destination bar can hold (its beat range);
+ *  undefined when none survive, so spans don't carry empty arrays. */
+function anchorsFor(
+  anchors: WordAnchor[] | undefined,
+  bar: Bar
+): WordAnchor[] | undefined {
+  if (!anchors) return undefined;
+  const total = bar.chords.reduce((sum, c) => sum + c.beats, 0);
+  const kept = anchors.filter((a) => a.beat < total);
+  return kept.length > 0 ? kept : undefined;
+}
 
 export interface WordLayout {
   /** Every word in the row, in order. */
@@ -43,6 +55,10 @@ export function lineWordLayout(line: Line): WordLayout {
  * Words transfer only between those two bars — every other bar keeps its
  * word count — so `gap` is clamped to the range the pair spans. Either bar
  * of the pair may end up with zero words (its lyric span disappears).
+ *
+ * Anchors: words that stay in their bar keep theirs (reindexed on the right
+ * side); words that changed bars arrive unanchored — their old beats
+ * belonged to the other bar.
  */
 export function setWordBoundary(
   line: Line,
@@ -59,13 +75,25 @@ export function setWordBoundary(
   if (target === right.start) return line;
   const pair = layout.words.slice(lo, hi);
   const cells = toDense(line);
+  const newLeftCount = target - lo;
+  // Words transferred into the right bar shift its surviving anchors' word
+  // indexes by the same amount the boundary moved.
+  const delta = target - right.start;
+  const leftAnchors = cells[boundary - 1].anchors?.filter(
+    (a) => a.word < newLeftCount
+  );
+  const rightAnchors = cells[boundary].anchors
+    ?.filter((a) => a.word >= Math.max(delta, 0))
+    .map((a) => ({ ...a, word: a.word - delta }));
   cells[boundary - 1] = {
     ...cells[boundary - 1],
-    lyric: pair.slice(0, target - lo).join(" "),
+    lyric: pair.slice(0, newLeftCount).join(" "),
+    anchors: leftAnchors?.length ? leftAnchors : undefined,
   };
   cells[boundary] = {
     ...cells[boundary],
-    lyric: pair.slice(target - lo).join(" "),
+    lyric: pair.slice(newLeftCount).join(" "),
+    anchors: rightAnchors?.length ? rightAnchors : undefined,
   };
   return fromDense(cells);
 }
@@ -75,13 +103,24 @@ export function setWordBoundary(
  * every op in this module; "" (or only whitespace) removes the span. Other
  * bars are untouched. Same-reference no-op when the bar doesn't exist or the
  * normalized text matches what's already there.
+ *
+ * Anchors survive a retype that keeps the word count (fixing a typo keeps
+ * the alignment); a different word count invalidates them — the indexes no
+ * longer name the same words — so they drop.
  */
 export function setBarLyric(line: Line, bar: number, text: string): Line {
   if (bar < 0 || bar >= line.bars.length) return line;
-  const next = lyricWords(text).join(" ");
+  const words = lyricWords(text);
+  const next = words.join(" ");
   const cells = toDense(line);
   if (next === cells[bar].lyric) return line;
-  cells[bar] = { ...cells[bar], lyric: next };
+  const sameWordCount =
+    words.length === lyricWords(cells[bar].lyric).length;
+  cells[bar] = {
+    ...cells[bar],
+    lyric: next,
+    anchors: sameWordCount ? cells[bar].anchors : undefined,
+  };
   return fromDense(cells);
 }
 
@@ -102,9 +141,16 @@ export function shiftLyric(line: Line, from: number, dir: -1 | 1): Line {
   let end = to;
   while (end >= 0 && end < cells.length && cells[end].lyric !== "") end += dir;
   if (end < 0 || end >= cells.length) return line;
+  // Anchors travel with their phrase (beats are bar-relative, so they stay
+  // meaningful), except any past the destination bar's beat range.
   const out = cells.map((c) => ({ ...c }));
-  for (let i = end; i !== to; i -= dir) out[i].lyric = out[i - dir].lyric;
+  for (let i = end; i !== to; i -= dir) {
+    out[i].lyric = out[i - dir].lyric;
+    out[i].anchors = anchorsFor(out[i - dir].anchors, out[i].bar);
+  }
   out[to].lyric = src.lyric;
+  out[to].anchors = anchorsFor(src.anchors, out[to].bar);
   out[from].lyric = "";
+  out[from].anchors = undefined;
   return fromDense(out);
 }

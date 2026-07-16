@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Bar } from "@/lib/song/types";
+import { anchorSegments } from "@/lib/song/anchors";
+import type { Bar, LyricSpan } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
 import { ChordSym } from "./ChordSym";
@@ -29,7 +30,7 @@ function BeatDots({ count }: { count: number }) {
  */
 export function BarCell({
   bar,
-  lyric,
+  span,
   showLyrics,
   songKey,
   displayKey,
@@ -42,7 +43,8 @@ export function BarCell({
   onChordTap,
 }: {
   bar: Bar;
-  lyric?: string;
+  /** This bar's lyric phrase (with any word→beat anchors). */
+  span?: LyricSpan;
   showLyrics: boolean;
   songKey: string;
   displayKey: string;
@@ -141,11 +143,26 @@ export function BarCell({
           </div>
         ))}
       </div>
-      {showLyrics && (
-        <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
-          {lyric ?? ""}
-        </p>
-      )}
+      {showLyrics &&
+        (span?.anchors?.length ? (
+          // Anchored lyric: segments mirror the chord row's beat-weighted
+          // flex layout, so each anchored word starts where its beat does.
+          <div className="mt-1 flex min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+            {anchorSegments(bar, span).map((seg, i) => (
+              <span
+                key={i}
+                className="min-w-0"
+                style={{ flexGrow: seg.grow, flexBasis: 0 }}
+              >
+                {seg.text}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+            {span?.text ?? ""}
+          </p>
+        ))}
     </div>
   );
 }

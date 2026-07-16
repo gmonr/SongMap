@@ -118,3 +118,34 @@ describe("deleteBar", () => {
     expect(deleteBar(rows, 5, 0)).toBe(rows);
   });
 });
+
+describe("word→beat anchors across line ops", () => {
+  const anchored = line([bar("C"), bar("F")], {
+    0: { text: "oh what a night", anchors: [{ word: 2, beat: 2 }] },
+  });
+
+  it("splitLine and mergeLineWithNext preserve anchors", () => {
+    const split = splitLine([anchored], 0, 1);
+    expect(split[0].lyrics[0].anchors).toEqual([{ word: 2, beat: 2 }]);
+    const merged = mergeLineWithNext(split, 0);
+    expect(merged[0].lyrics[0].anchors).toEqual([{ word: 2, beat: 2 }]);
+  });
+
+  it("insertBar preserves anchors on the shifted spans", () => {
+    const out = insertBar([anchored], 0, 0, 4);
+    expect(out[0].lyrics).toEqual([
+      { text: "oh what a night", bar: 1, anchors: [{ word: 2, beat: 2 }] },
+    ]);
+  });
+
+  it("deleteBar drops the merged span's anchors", () => {
+    const rows = [
+      line([bar("C"), bar("F")], {
+        0: { text: "oh what", anchors: [{ word: 1, beat: 2 }] },
+        1: { text: "a night", anchors: [{ word: 1, beat: 1 }] },
+      }),
+    ];
+    const out = deleteBar(rows, 0, 1);
+    expect(out[0].lyrics).toEqual([{ text: "oh what a night", bar: 0 }]);
+  });
+});
