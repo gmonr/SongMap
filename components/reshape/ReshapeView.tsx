@@ -19,6 +19,7 @@ import {
   findMatchingBars,
   propagateBarChords,
   sameBarLocation,
+  syncLinkedChords,
   type BarLocation,
 } from "@/lib/song/fingerprint";
 import { deleteBar, insertBar } from "@/lib/song/lines";
@@ -204,13 +205,19 @@ export function ReshapeView({
     const next = fn(prev);
     if (next === prev) return;
     setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
-    const nextData: SongData = {
-      ...data,
-      sections: {
-        ...data.sections,
-        [id]: { ...data.sections[id], lines: next },
+    // Linked sections share chords: the edit flows to the source and every
+    // other linked member (or severs a link the edit made structurally
+    // untrue). One undo step reverts the edit and the sync together.
+    const nextData: SongData = syncLinkedChords(
+      {
+        ...data,
+        sections: {
+          ...data.sections,
+          [id]: { ...data.sections[id], lines: next },
+        },
       },
-    };
+      id
+    );
     setData(nextData);
 
     if (!editedBar) {
@@ -245,7 +252,7 @@ export function ReshapeView({
     setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
     setSel(null);
     setOffer(null);
-    setData(next);
+    setData(syncLinkedChords(next));
   };
 
   const undo = () => {
@@ -275,7 +282,7 @@ export function ReshapeView({
     setOffer(null);
     if (next === data) return;
     setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
-    setData(next);
+    setData(syncLinkedChords(next, offer.source.sectionId));
   };
 
   // The selection's move targets, so the SelectionBar can disable dead

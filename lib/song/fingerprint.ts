@@ -153,6 +153,123 @@ export function linkChords(
 }
 
 /* ------------------------------------------------------------------ */
+/* Linked-chord sync: sameChordsAs sections genuinely share one chord  */
+/* progression. Editing any member updates all of them; lyrics, word   */
+/* anchors, and row layout stay each section's own.                    */
+
+/** The section's link source, when the link is section-wide: every
+ *  arrangement instance of `id` carries the same `sameChordsAs` (pointing
+ *  at a real, different section). Per-instance or conflicting links are
+ *  display-only and don't share data. */
+export function linkSourceOf(data: SongData, id: string): string | undefined {
+  const items = data.arrangement.filter((a) => a.ref === id);
+  const source = items[0]?.sameChordsAs;
+  if (
+    !source ||
+    source === id ||
+    !data.sections[source] ||
+    !items.every((a) => a.sameChordsAs === source)
+  ) {
+    return undefined;
+  }
+  return source;
+}
+
+/** Follow `sameChordsAs` links to the unlinked section they bottom out at
+ *  (undefined for an unlinked section or a cyclic hand-edited blob). */
+function rootLinkSource(data: SongData, id: string): string | undefined {
+  const seen = new Set([id]);
+  let current = id;
+  for (;;) {
+    const next = linkSourceOf(data, current);
+    if (!next) return current === id ? undefined : current;
+    if (seen.has(next)) return undefined;
+    seen.add(next);
+    current = next;
+  }
+}
+
+/** Rewrite section `id`'s bars to the flattened chord sequence `bars`
+ *  (fresh cell copies), keeping its row layout and lyrics. Callers ensure
+ *  the counts match. Same-reference no-op when already identical. */
+function stampSectionBars(
+  data: SongData,
+  id: string,
+  bars: Bar[]
+): SongData {
+  let flat = 0;
+  let changed = false;
+  const lines = data.sections[id].lines.map((line) => {
+    let lineChanged = false;
+    const next = line.bars.map((b) => {
+      const src = bars[flat++];
+      if (barFingerprint(b) === barFingerprint(src)) return b;
+      lineChanged = true;
+      return { chords: src.chords.map((c) => ({ ...c })) };
+    });
+    if (!lineChanged) return line;
+    changed = true;
+    return { ...line, bars: next };
+  });
+  if (!changed) return data;
+  return {
+    ...data,
+    sections: { ...data.sections, [id]: { ...data.sections[id], lines } },
+  };
+}
+
+/**
+ * Re-establish the linked-chords invariant: every section whose instances
+ * are all `sameChordsAs`-linked carries the same chords as its (root)
+ * source. Pass `editedId` when one section was just edited so a linked
+ * member pushes its chords *to* the source first — sharing works in both
+ * directions, like a merged section. A linked section whose bar count no
+ * longer matches its source (bars added/deleted on either side) can't
+ * honestly claim "chords same as" anymore, so its links are removed
+ * instead. Same-reference no-op when everything is already in sync.
+ */
+export function syncLinkedChords(data: SongData, editedId?: string): SongData {
+  let out = data;
+  const flatOf = (id: string): Bar[] =>
+    out.sections[id].lines.flatMap((l) => l.bars);
+
+  if (editedId && data.sections[editedId]) {
+    const root = rootLinkSource(data, editedId);
+    if (root) {
+      const src = flatOf(editedId);
+      if (flatOf(root).length === src.length) {
+        out = stampSectionBars(out, root, src);
+      }
+      // Count mismatch: the forward pass below unlinks editedId instead.
+    }
+  }
+
+  const unlink = new Set<string>();
+  for (const id of Object.keys(data.sections)) {
+    const root = rootLinkSource(data, id);
+    if (!root) continue;
+    const src = flatOf(root);
+    if (flatOf(id).length !== src.length) {
+      unlink.add(id);
+      continue;
+    }
+    out = stampSectionBars(out, id, src);
+  }
+
+  if (unlink.size > 0) {
+    out = {
+      ...out,
+      arrangement: out.arrangement.map((a) => {
+        if (!unlink.has(a.ref) || !a.sameChordsAs) return a;
+        const { sameChordsAs: _drop, ...rest } = a;
+        return rest;
+      }),
+    };
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Bar-level propagation: fix a bar once, offer the fix everywhere it  */
 /* repeats. Songs re-use the same few bars, so an import mistake in    */
 /* one ("G" that should be "G/B", a 2+2 split that should be 3+1)      */

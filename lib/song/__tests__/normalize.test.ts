@@ -73,4 +73,38 @@ describe("normalizeSongData", () => {
       normalizeSongData(hopeless).sections.v.lines[0].lyrics[0].anchors
     ).toBeUndefined();
   });
+
+  it("re-syncs linked sections saved before links shared chords, then cleans anchors against the synced bars", () => {
+    // p claims "chords same as v" but drifted: different chords, and an
+    // anchor only valid against its stale 4-beat bar (v's bar has 2 beats).
+    const data: SongData = {
+      sections: {
+        v: {
+          label: "Verse",
+          color: "blue",
+          lines: [line([{ chords: [{ sym: "C", beats: 2 }] }])],
+        },
+        p: {
+          label: "Pre",
+          color: "teal",
+          lines: [
+            line([bar("Am")], {
+              0: { text: "oh what a night", anchors: [{ word: 2, beat: 3 }] },
+            }),
+          ],
+        },
+      },
+      arrangement: [
+        { ref: "v", instanceLabel: "Verse 1" },
+        { ref: "p", instanceLabel: "Pre", sameChordsAs: "v" },
+      ],
+    };
+    const out = normalizeSongData(data);
+    expect(out.sections.p.lines[0].bars[0]).toEqual({
+      chords: [{ sym: "C", beats: 2 }],
+    });
+    // The beat-3 anchor is out of range for the synced 2-beat bar.
+    expect(out.sections.p.lines[0].lyrics[0].anchors).toBeUndefined();
+    expect(out.sections.p.lines[0].lyrics[0].text).toBe("oh what a night");
+  });
 });
