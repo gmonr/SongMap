@@ -147,6 +147,28 @@ export interface UGTab {
   /** Key as UG reports it, e.g. "Am". */
   tonality?: string;
   capo?: number;
+  /** BPM from the tab's strumming patterns, when the author added any. */
+  tempo?: number;
+}
+
+// Sanity range for a strumming pattern's bpm field — outside it the value is
+// junk (0 is UG's "unset").
+const MIN_BPM = 30;
+const MAX_BPM = 300;
+
+/** First plausible bpm in tab_view.strummings, or undefined. Strummings only
+ *  exist when the tab author added strumming patterns, so this is
+ *  opportunistic — most chord tabs won't have one. */
+function strummingsBpm(data: unknown): number | undefined {
+  const strummings = get(data, "tab_view", "strummings");
+  if (!Array.isArray(strummings)) return undefined;
+  for (const s of strummings) {
+    const bpm = num(get(s, "bpm"));
+    if (bpm !== undefined && bpm >= MIN_BPM && bpm <= MAX_BPM) {
+      return Math.round(bpm);
+    }
+  }
+  return undefined;
 }
 
 /** Strip UG's [ch]/[tab] markers, decode entity-encoded song text
@@ -172,6 +194,7 @@ export function parseTabPage(store: unknown): UGTab {
     artistName: str(get(tab, "artist_name")),
     tonality: str(get(data, "tab_view", "meta", "tonality")),
     capo: num(get(data, "tab_view", "meta", "capo")),
+    tempo: strummingsBpm(data),
   };
 }
 

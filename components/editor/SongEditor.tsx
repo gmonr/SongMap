@@ -15,6 +15,8 @@ import {
 } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
 import { deleteSong } from "@/app/songs/actions";
+import { TapTempoButton } from "@/components/tempo/TapTempoButton";
+import { TempoLookup } from "@/components/tempo/TempoLookup";
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -460,6 +462,15 @@ export function SongEditor({ song }: { song: SongRow }) {
               className={`${inputCls} w-full`}
             />
           </label>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <TapTempoButton onTempo={(bpm) => setTempo(String(bpm))} />
+          <TempoLookup
+            artist={artist}
+            title={title}
+            currentTempo={tempo ? parseInt(tempo, 10) : null}
+            onUse={(bpm) => setTempo(String(bpm))}
+          />
         </div>
       </div>
 

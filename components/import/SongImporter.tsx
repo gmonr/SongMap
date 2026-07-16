@@ -8,6 +8,8 @@ import { beatsPerBar, type SongRow } from "@/lib/song/types";
 import { SongMap } from "@/components/song-map/SongMap";
 import { createImportedSong } from "@/app/songs/actions";
 import { UGSearch, type UGPick } from "@/components/import/UGSearch";
+import { TapTempoButton } from "@/components/tempo/TapTempoButton";
+import { TempoLookup } from "@/components/tempo/TempoLookup";
 
 const inputCls =
   "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none";
@@ -34,6 +36,7 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
   const [timeSignature, setTimeSignature] = useState("4/4");
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [capo, setCapo] = useState<number | null>(null);
+  const [tempo, setTempo] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
@@ -61,7 +64,7 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
           artist: effectiveArtist || null,
           key: effectiveKey,
           time_signature: timeSignature,
-          tempo: null,
+          tempo,
           capo: capo ?? 0,
           data: result.data,
           source_url: sourceUrl,
@@ -76,6 +79,7 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
     setArtist(tab.artist ?? "");
     if (tab.key) setKey(tab.key);
     setCapo(tab.capo ?? null);
+    if (tab.tempo) setTempo(tab.tempo);
     setSourceUrl(tab.sourceUrl);
   };
 
@@ -92,6 +96,7 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
           data: result.data,
           source_url: sourceUrl,
           capo,
+          tempo,
         });
       } catch {
         setError("Could not save the song. Are you still signed in?");
@@ -185,6 +190,30 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
               </select>
             </label>
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <label className="flex items-center gap-2">
+            <span className="font-medium">Tempo ♩</span>
+            <input
+              type="number"
+              min={20}
+              max={300}
+              value={tempo ?? ""}
+              onChange={(e) =>
+                setTempo(e.target.value ? parseInt(e.target.value, 10) : null)
+              }
+              placeholder="—"
+              className={`${inputCls} w-20`}
+            />
+          </label>
+          <TapTempoButton onTempo={setTempo} />
+          <TempoLookup
+            artist={effectiveArtist}
+            title={effectiveTitle}
+            currentTempo={tempo}
+            onUse={setTempo}
+          />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
