@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { anchorSegments, leadText } from "@/lib/song/anchors";
+import { markRuns } from "@/lib/song/marks";
 import type { Bar, LyricSpan } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
@@ -44,14 +44,14 @@ export function BarCell({
   onChordTap,
 }: {
   bar: Bar;
-  /** This bar's lyric phrase (with any word→beat anchors). */
+  /** This bar's lyric phrase (with any word/syllable highlights). */
   span?: LyricSpan;
   showLyrics: boolean;
   songKey: string;
   displayKey: string;
   notation: Notation;
   borderColor: string;
-  /** Text color class for beat-anchored syllables (the section's accent). */
+  /** Text color class for highlighted words/syllables (the section's accent). */
   emphasisColor?: string;
   masked?: boolean;
   onReveal?: () => void;
@@ -146,44 +146,22 @@ export function BarCell({
           </div>
         ))}
       </div>
-      {showLyrics &&
-        (span?.anchors?.length || span?.lead ? (
-          // Anchored lyric: segments mirror the chord row's beat-weighted
-          // flex layout, so each anchored word starts where its beat does.
-          // Pickup words hang left of the bar, like a real chart's anacrusis.
-          // Segments keep their min-content width (a segment with few beats —
-          // or zero, e.g. words before a beat-0 anchor — must not collapse
-          // and paint over its neighbor), so a tight bar wraps to more lines
-          // and beat alignment degrades to best-effort.
-          <div className="relative mt-1 flex min-h-4 flex-wrap px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
-            {!!span.lead && (
-              <span className="absolute right-full top-0 max-w-24 truncate pr-1 italic text-slate-400">
-                {leadText(span)}
-              </span>
-            )}
-            {anchorSegments(bar, span).map((seg, i) => (
-              <span
-                key={i}
-                style={{ flexGrow: seg.grow, flexBasis: 0 }}
-              >
-                {seg.emphLen > 0 ? (
-                  <>
-                    <b className={`font-bold ${emphasisColor}`}>
-                      {seg.text.slice(0, seg.emphLen)}
-                    </b>
-                    {seg.text.slice(seg.emphLen)}
-                  </>
-                ) : (
-                  seg.text
-                )}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
-            {span?.text ?? ""}
-          </p>
-        ))}
+      {showLyrics && (
+        // One flowing block of lyric per bar; highlighted words/syllables
+        // render bold in the section accent so the singer can tie them to
+        // the chords by eye — never repositioned or split by the beats.
+        <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+          {markRuns(span).map((run, i) =>
+            run.emph ? (
+              <b key={i} className={`font-bold ${emphasisColor}`}>
+                {run.text}
+              </b>
+            ) : (
+              <span key={i}>{run.text}</span>
+            )
+          )}
+        </p>
+      )}
     </div>
   );
 }

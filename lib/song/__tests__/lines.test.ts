@@ -119,46 +119,52 @@ describe("deleteBar", () => {
   });
 });
 
-describe("word→beat anchors across line ops", () => {
-  const anchored = line([bar("C"), bar("F")], {
-    0: { text: "oh what a night", anchors: [{ word: 2, beat: 2 }] },
+describe("highlights across line ops", () => {
+  const marked = line([bar("C"), bar("F")], {
+    0: { text: "oh what a night", marks: [{ word: 2 }] },
   });
 
-  it("splitLine and mergeLineWithNext preserve anchors", () => {
-    const split = splitLine([anchored], 0, 1);
-    expect(split[0].lyrics[0].anchors).toEqual([{ word: 2, beat: 2 }]);
+  it("splitLine and mergeLineWithNext preserve marks", () => {
+    const split = splitLine([marked], 0, 1);
+    expect(split[0].lyrics[0].marks).toEqual([{ word: 2 }]);
     const merged = mergeLineWithNext(split, 0);
-    expect(merged[0].lyrics[0].anchors).toEqual([{ word: 2, beat: 2 }]);
+    expect(merged[0].lyrics[0].marks).toEqual([{ word: 2 }]);
   });
 
-  it("insertBar preserves anchors on the shifted spans", () => {
-    const out = insertBar([anchored], 0, 0, 4);
+  it("insertBar preserves marks on the shifted spans", () => {
+    const out = insertBar([marked], 0, 0, 4);
     expect(out[0].lyrics).toEqual([
-      { text: "oh what a night", bar: 1, anchors: [{ word: 2, beat: 2 }] },
+      { text: "oh what a night", bar: 1, marks: [{ word: 2 }] },
     ]);
   });
 
-  it("deleteBar keeps the heir's anchors when appending, drops the removed span's", () => {
+  it("deleteBar merges both phrases' marks, reindexing the appended ones", () => {
     const rows = [
       line([bar("C"), bar("F")], {
-        0: { text: "oh what", anchors: [{ word: 1, beat: 2 }] },
-        1: { text: "a night", anchors: [{ word: 1, beat: 1 }] },
+        0: { text: "oh what", marks: [{ word: 1 }] },
+        1: { text: "a night", marks: [{ word: 1, char: 2 }] },
       }),
     ];
     const out = deleteBar(rows, 0, 1);
     expect(out[0].lyrics).toEqual([
-      { text: "oh what a night", bar: 0, anchors: [{ word: 1, beat: 2 }] },
+      {
+        text: "oh what a night",
+        bar: 0,
+        marks: [{ word: 1 }, { word: 3, char: 2 }],
+      },
     ]);
   });
 
-  it("deleteBar drops anchors when the removed lyric prepends (first bar)", () => {
+  it("deleteBar reindexes the heir's marks when the removed lyric prepends (first bar)", () => {
     const rows = [
       line([bar("C"), bar("F")], {
         0: "oh what",
-        1: { text: "a night", anchors: [{ word: 1, beat: 1 }] },
+        1: { text: "a night", marks: [{ word: 1 }] },
       }),
     ];
     const out = deleteBar(rows, 0, 0);
-    expect(out[0].lyrics).toEqual([{ text: "oh what a night", bar: 0 }]);
+    expect(out[0].lyrics).toEqual([
+      { text: "oh what a night", bar: 0, marks: [{ word: 3 }] },
+    ]);
   });
 });

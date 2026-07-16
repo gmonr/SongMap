@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { setBarBeatBoundary, setWordAnchor } from "@/lib/song/anchors";
 import {
   chordMoveTarget,
   deleteChord,
@@ -11,6 +10,7 @@ import {
   moveChord,
   nearestChordSym,
   renameChord,
+  setBeatBoundary,
 } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
 import {
@@ -27,10 +27,10 @@ import {
   lineWordLayout,
   lyricWords,
   setBarLyric,
-  setLead,
   setWordBoundary,
   shiftLyric,
 } from "@/lib/song/lyrics";
+import { markChar, toggleWordMark } from "@/lib/song/marks";
 import {
   encodeFocus,
   mapSelection,
@@ -43,7 +43,6 @@ import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
-import { AnchorDots } from "./AnchorDots";
 import { PropagateBanner } from "./PropagateBanner";
 import { lyricFor } from "./BarChip";
 import { BeatDots } from "./BeatDots";
@@ -81,12 +80,10 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       <b className="font-semibold text-slate-600">chord label</b> to pick up
       its whole phrase (◀ ▶ shifts it a bar,{" "}
       <b className="font-semibold text-slate-600">✎</b> retypes it). Tap a{" "}
-      <b className="font-semibold text-slate-600">word</b> to pin it to a beat
-      of its bar — pinned words track the chords when beat splits move — or
-      mark it as the downbeat with{" "}
-      <b className="font-semibold text-slate-600">↰ pickup</b> (earlier words
-      sing ahead of the bar). To move words between rows, merge the rows in
-      Rows mode first.
+      <b className="font-semibold text-slate-600">word</b> to highlight it on
+      the song map (letter gaps narrow it to a syllable) — highlights are
+      your own landmarks for where the words meet the chords. To move words
+      between rows, merge the rows in Rows mode first.
     </>
   ),
   chords: (
@@ -306,22 +303,23 @@ export function ReshapeView({
       : setWordBoundary(line, boundary, start + dir);
   };
 
-  // A selected word's (or syllable's — sel.char > 0) current anchor, so
-  // ◀ ▶ can nudge it a beat at a time and the AnchorDots can highlight it.
+  // A selected word (or its syllable — sel.char > 0) and whether that exact
+  // position is currently highlighted, for the toggle in the SelectionBar.
   const selChar = sel?.kind === "word" ? (sel.char ?? 0) : 0;
   const selSpan =
     sel?.kind === "word"
       ? selLines?.[sel.li]?.lyrics.find((s) => s.bar === sel.bar)
       : undefined;
-  const selAnchorBeat =
-    sel?.kind === "word"
-      ? (selSpan?.anchors?.find(
-          (a) => a.word === sel.word && (a.char ?? 0) === selChar
-        )?.beat ?? null)
-      : null;
+  const selMarked =
+    sel?.kind === "word" &&
+    !!selSpan?.marks?.some(
+      (m) => m.word === sel.word && markChar(m) === selChar
+    );
 
   const canMove = (dir: -1 | 1): boolean => {
-    if (!sel || !selLines || sel.kind === "bar") return false;
+    if (!sel || !selLines || sel.kind === "bar" || sel.kind === "word") {
+      return false;
+    }
     if (sel.kind === "chord") {
       return (
         chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats) !== null
@@ -330,39 +328,11 @@ export function ReshapeView({
     if (sel.kind === "break") {
       return movedBreak(selLines[sel.li], sel.boundary, dir) !== selLines[sel.li];
     }
-    if (sel.kind === "word") {
-      return (
-        selAnchorBeat !== null &&
-        setWordAnchor(
-          selLines[sel.li],
-          sel.bar,
-          sel.word,
-          selAnchorBeat + dir,
-          selChar
-        ) !== selLines[sel.li]
-      );
-    }
     return shiftLyric(selLines[sel.li], sel.bar, dir) !== selLines[sel.li];
   };
 
   const moveSel = (dir: -1 | 1) => {
-    if (!sel || !selLines || sel.kind === "bar") return;
-    if (sel.kind === "word") {
-      if (selAnchorBeat === null) return;
-      applyToSection(sel.sectionId, (lines) => {
-        const next = setWordAnchor(
-          lines[sel.li],
-          sel.bar,
-          sel.word,
-          selAnchorBeat + dir,
-          selChar
-        );
-        return next === lines[sel.li]
-          ? lines
-          : lines.map((l, i) => (i === sel.li ? next : l));
-      });
-      return;
-    }
+    if (!sel || !selLines || sel.kind === "bar" || sel.kind === "word") return;
     if (sel.kind === "chord") {
       const target = chordMoveTarget(selLines, sel.li, sel.bi, sel.ci, dir, beats);
       if (!target) return;
@@ -492,36 +462,31 @@ export function ReshapeView({
           : undefined
       : undefined;
 
-  // Moving a beat split also drags along any word anchored to it — that's
-  // the "lyrics follow the resized chord" behavior (see setBarBeatBoundary).
   const setBoundary = (ci: number, chordBeats: number) => {
     if (sel?.kind !== "chord") return;
     applyToSection(
       sel.sectionId,
       (lines) => {
         const line = lines[sel.li];
-        if (!line) return lines;
-        const next = setBarBeatBoundary(line, sel.bi, ci, chordBeats);
-        return next === line
-          ? lines
-          : lines.map((l, i) => (i === sel.li ? next : l));
+        const barHere = line?.bars[sel.bi];
+        if (!barHere) return lines;
+        const nextBar = setBeatBoundary(barHere, ci, chordBeats);
+        if (nextBar === barHere) return lines;
+        return lines.map((l, i) =>
+          i === sel.li
+            ? { ...l, bars: l.bars.map((b, bi) => (bi === sel.bi ? nextBar : b)) }
+            : l
+        );
       },
       { li: sel.li, bi: sel.bi }
     );
   };
 
-  // A selected word's beat dots: tap a beat to pin the word (or its
-  // selected syllable) there, tap its current beat to un-pin.
-  const setAnchor = (beat: number | null) => {
+  // Toggle the highlight on the selected word (or its selected syllable).
+  const toggleMark = () => {
     if (sel?.kind !== "word") return;
     applyToSection(sel.sectionId, (lines) => {
-      const next = setWordAnchor(
-        lines[sel.li],
-        sel.bar,
-        sel.word,
-        beat,
-        selChar
-      );
+      const next = toggleWordMark(lines[sel.li], sel.bar, sel.word, selChar);
       return next === lines[sel.li]
         ? lines
         : lines.map((l, i) => (i === sel.li ? next : l));
@@ -600,67 +565,44 @@ export function ReshapeView({
       ? (lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ?? "")
       : "";
 
-  // ↰ pickup: the selected word becomes the bar's downbeat (every earlier
-  // word sings ahead of the bar); on the current downbeat it clears instead.
-  const selLead = sel?.kind === "word" ? (selSpan?.lead ?? 0) : 0;
-  const pickupTarget = sel?.kind === "word" && sel.word !== selLead ? sel.word : 0;
-  const setPickup = () => {
-    if (sel?.kind !== "word") return;
-    applyToSection(sel.sectionId, (lines) => {
-      const next = setLead(lines[sel.li], sel.bar, pickupTarget);
-      return next === lines[sel.li]
-        ? lines
-        : lines.map((l, i) => (i === sel.li ? next : l));
-    });
-  };
-
-  const wordIsPickup = sel?.kind === "word" && sel.word < selLead;
-
   const wordTools =
     sel?.kind === "word" && selLines?.[sel.li]?.bars[sel.bar] ? (
       <>
-        <button
-          type="button"
-          onClick={setPickup}
-          disabled={pickupTarget === 0 && selLead === 0}
-          title={
-            pickupTarget === 0
-              ? "Clear the pickup — the phrase starts on the bar"
-              : "Words before this one sing ahead of the bar (anacrusis)"
-          }
-          className={toolBtnCls}
-        >
-          {pickupTarget === 0 && selLead > 0 ? "↰ clear pickup" : "↰ pickup"}
-        </button>
-        {wordIsPickup ? (
-          <span className="flex-1 self-center text-center text-xs text-slate-400">
-            pickup word — sings before the bar
-          </span>
-        ) : (
-          <div className="flex min-w-0 flex-1 flex-col items-stretch">
-            {selWordText.length > 1 && (
-              <SyllableGaps
-                word={selWordText}
-                selChar={selChar}
-                anchoredChars={
-                  new Set(
-                    selSpan?.anchors
-                      ?.filter((a) => a.word === sel.word && (a.char ?? 0) > 0)
-                      .map((a) => a.char!) ?? []
-                  )
-                }
-                onPick={(char) =>
-                  setSel({ ...sel, char: char > 0 ? char : undefined })
-                }
-              />
-            )}
-            <AnchorDots
-              bar={selLines[sel.li].bars[sel.bar]}
-              anchorBeat={selAnchorBeat}
-              onSet={setAnchor}
+        {selWordText.length > 1 && (
+          <div className="min-w-0 flex-1">
+            <SyllableGaps
+              word={selWordText}
+              selChar={selChar}
+              markedChars={
+                new Set(
+                  selSpan?.marks
+                    ?.filter((m) => m.word === sel.word && (m.char ?? 0) > 0)
+                    .map((m) => m.char!) ?? []
+                )
+              }
+              onPick={(char) =>
+                setSel({ ...sel, char: char > 0 ? char : undefined })
+              }
             />
           </div>
         )}
+        {selWordText.length <= 1 && <span className="flex-1" />}
+        <button
+          type="button"
+          onClick={toggleMark}
+          title={
+            selMarked
+              ? "Remove the highlight"
+              : selChar > 0
+                ? "Highlight this syllable on the song map"
+                : "Highlight this word on the song map"
+          }
+          className={`${toolBtnCls} ${
+            selMarked ? "bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800" : ""
+          }`}
+        >
+          {selMarked ? "★ highlighted" : "☆ highlight"}
+        </button>
       </>
     ) : undefined;
 
@@ -888,11 +830,9 @@ export function ReshapeView({
                 : sel.kind === "break"
                   ? "◀ ▶ move the break one word"
                   : sel.kind === "word"
-                    ? selAnchorBeat === null
-                      ? selChar > 0
-                        ? "tap a beat dot to pin this syllable"
-                        : "tap a beat dot to pin this word · letter gaps pick a syllable"
-                      : "◀ ▶ move the pin one beat"
+                    ? selChar > 0
+                      ? "☆ highlights the syllable on the song map"
+                      : "☆ highlights it · letter gaps pick a syllable"
                     : "◀ ▶ shift it one bar"
           }
           canLeft={canMove(-1)}
@@ -902,15 +842,10 @@ export function ReshapeView({
               ? "Move chord"
               : sel.kind === "break"
                 ? "Move break"
-                : sel.kind === "word"
-                  ? "Move pin"
-                  : "Shift phrase"
+                : "Shift phrase"
           }
           onMove={
-            sel.kind === "bar" ||
-            (sel.kind === "word" && selAnchorBeat === null)
-              ? undefined
-              : moveSel
+            sel.kind === "bar" || sel.kind === "word" ? undefined : moveSel
           }
           onClear={() => setSel(null)}
           tools={chordTools ?? barTools ?? wordTools}
