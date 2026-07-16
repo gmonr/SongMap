@@ -11,34 +11,22 @@
  * taps from dirtying the save state).
  */
 import { fromDense, toDense } from "./lines";
-import type { Bar, Line, WordAnchor } from "./types";
+import type { Line, WordMark } from "./types";
 
 /**
- * Anchors that survive retyping a phrase into `words` (same word count —
- * callers enforce that): word-start anchors always do, syllable anchors
- * only while their char offset still falls inside the (possibly shorter)
- * new word. Undefined when none survive.
+ * Highlights that survive retyping a phrase into `words` (same word count —
+ * callers enforce that): word-start marks always do, syllable marks only
+ * while their char offset still falls inside the (possibly shorter) new
+ * word. Undefined when none survive.
  */
-export function anchorsAfterRetype(
-  anchors: WordAnchor[] | undefined,
+export function marksAfterRetype(
+  marks: WordMark[] | undefined,
   words: string[]
-): WordAnchor[] | undefined {
-  if (!anchors) return undefined;
-  const kept = anchors.filter(
-    (a) => a.word < words.length && (a.char ?? 0) < words[a.word].length
+): WordMark[] | undefined {
+  if (!marks) return undefined;
+  const kept = marks.filter(
+    (m) => m.word < words.length && (m.char ?? 0) < words[m.word].length
   );
-  return kept.length > 0 ? kept : undefined;
-}
-
-/** Anchors filtered to what a destination bar can hold (its beat range);
- *  undefined when none survive, so spans don't carry empty arrays. */
-function anchorsFor(
-  anchors: WordAnchor[] | undefined,
-  bar: Bar
-): WordAnchor[] | undefined {
-  if (!anchors) return undefined;
-  const total = bar.chords.reduce((sum, c) => sum + c.beats, 0);
-  const kept = anchors.filter((a) => a.beat < total);
   return kept.length > 0 ? kept : undefined;
 }
 
@@ -73,9 +61,9 @@ export function lineWordLayout(line: Line): WordLayout {
  * word count — so `gap` is clamped to the range the pair spans. Either bar
  * of the pair may end up with zero words (its lyric span disappears).
  *
- * Anchors: words that stay in their bar keep theirs (reindexed on the right
- * side); words that changed bars arrive unanchored — their old beats
- * belonged to the other bar.
+ * Highlights are word-indexed with no bar-dependent state, so they travel
+ * with their words: marks on words that change bars re-index into the new
+ * phrase instead of dropping.
  */
 export function setWordBoundary(
   line: Line,
@@ -93,34 +81,29 @@ export function setWordBoundary(
   const pair = layout.words.slice(lo, hi);
   const cells = toDense(line);
   const newLeftCount = target - lo;
-  // Words transferred into the right bar shift its surviving anchors' word
-  // indexes by the same amount the boundary moved.
-  const delta = target - right.start;
-  const leftAnchors = cells[boundary - 1].anchors?.filter(
-    (a) => a.word < newLeftCount
-  );
-  const rightAnchors = cells[boundary].anchors
-    ?.filter((a) => a.word >= Math.max(delta, 0))
-    .map((a) => ({ ...a, word: a.word - delta }));
-  // A pickup marker names the downbeat's word index: transferred front
-  // words shift it (never past either end of the new phrase).
-  const leadOf = (cell: { lead?: number }, shift: number, count: number) => {
-    if (!cell.lead) return undefined;
-    const lead = Math.min(Math.max(cell.lead - shift, 0), Math.max(count - 1, 0));
-    return lead > 0 ? lead : undefined;
-  };
-  const rightCount = pair.length - newLeftCount;
+  // Both bars' marks, addressed by index into the pair's words, then dealt
+  // back out to whichever side each word landed on.
+  const oldLeftCount = left.words.length;
+  const pairMarks = [
+    ...(cells[boundary - 1].marks ?? []),
+    ...(cells[boundary].marks ?? []).map((m) => ({
+      ...m,
+      word: m.word + oldLeftCount,
+    })),
+  ];
+  const leftMarks = pairMarks.filter((m) => m.word < newLeftCount);
+  const rightMarks = pairMarks
+    .filter((m) => m.word >= newLeftCount)
+    .map((m) => ({ ...m, word: m.word - newLeftCount }));
   cells[boundary - 1] = {
     ...cells[boundary - 1],
     lyric: pair.slice(0, newLeftCount).join(" "),
-    anchors: leftAnchors?.length ? leftAnchors : undefined,
-    lead: leadOf(cells[boundary - 1], 0, newLeftCount),
+    marks: leftMarks.length > 0 ? leftMarks : undefined,
   };
   cells[boundary] = {
     ...cells[boundary],
     lyric: pair.slice(newLeftCount).join(" "),
-    anchors: rightAnchors?.length ? rightAnchors : undefined,
-    lead: leadOf(cells[boundary], delta, rightCount),
+    marks: rightMarks.length > 0 ? rightMarks : undefined,
   };
   return fromDense(cells);
 }
@@ -131,8 +114,8 @@ export function setWordBoundary(
  * bars are untouched. Same-reference no-op when the bar doesn't exist or the
  * normalized text matches what's already there.
  *
- * Anchors survive a retype that keeps the word count (fixing a typo keeps
- * the alignment); a different word count invalidates them — the indexes no
+ * Highlights survive a retype that keeps the word count (fixing a typo
+ * keeps them); a different word count invalidates them — the indexes no
  * longer name the same words — so they drop.
  */
 export function setBarLyric(line: Line, bar: number, text: string): Line {
@@ -146,33 +129,9 @@ export function setBarLyric(line: Line, bar: number, text: string): Line {
   cells[bar] = {
     ...cells[bar],
     lyric: next,
-    anchors: sameWordCount
-      ? anchorsAfterRetype(cells[bar].anchors, words)
+    marks: sameWordCount
+      ? marksAfterRetype(cells[bar].marks, words)
       : undefined,
-    lead: sameWordCount ? cells[bar].lead : undefined,
-  };
-  return fromDense(cells);
-}
-
-/**
- * Mark the first `lead` words of bar `bar`'s phrase as its anacrusis
- * (pickup — sung before the bar's downbeat); 0 clears the marker. Beat
- * anchors on the pickup words un-pin (they no longer sit in the bar's beat
- * layout). Same-reference no-op when the bar has no lyric, `lead` isn't a
- * sensible count (0 ≤ lead < word count), or nothing changes.
- */
-export function setLead(line: Line, bar: number, lead: number): Line {
-  const cells = toDense(line);
-  const cell = cells[bar];
-  if (!cell || cell.lyric === "") return line;
-  const count = lyricWords(cell.lyric).length;
-  if (!Number.isInteger(lead) || lead < 0 || lead >= count) return line;
-  if ((cell.lead ?? 0) === lead) return line;
-  const anchors = cell.anchors?.filter((a) => a.word >= lead);
-  cells[bar] = {
-    ...cell,
-    lead: lead > 0 ? lead : undefined,
-    anchors: anchors?.length ? anchors : undefined,
   };
   return fromDense(cells);
 }
@@ -194,19 +153,15 @@ export function shiftLyric(line: Line, from: number, dir: -1 | 1): Line {
   let end = to;
   while (end >= 0 && end < cells.length && cells[end].lyric !== "") end += dir;
   if (end < 0 || end >= cells.length) return line;
-  // Anchors travel with their phrase (beats are bar-relative, so they stay
-  // meaningful), except any past the destination bar's beat range.
+  // Highlights travel with their phrase — they carry no bar-specific state.
   const out = cells.map((c) => ({ ...c }));
   for (let i = end; i !== to; i -= dir) {
     out[i].lyric = out[i - dir].lyric;
-    out[i].anchors = anchorsFor(out[i - dir].anchors, out[i].bar);
-    out[i].lead = out[i - dir].lead;
+    out[i].marks = out[i - dir].marks;
   }
   out[to].lyric = src.lyric;
-  out[to].anchors = anchorsFor(src.anchors, out[to].bar);
-  out[to].lead = src.lead;
+  out[to].marks = src.marks;
   out[from].lyric = "";
-  out[from].anchors = undefined;
-  out[from].lead = undefined;
+  out[from].marks = undefined;
   return fromDense(out);
 }

@@ -7,9 +7,9 @@ export type ReshapeSelection =
   | { kind: "bar"; sectionId: string; li: number; bi: number }
   /** The │ break between bars `boundary - 1` and `boundary` of a line. */
   | { kind: "break"; sectionId: string; li: number; boundary: number }
-  /** Word `word` of bar `bar`'s phrase, for pinning it to a beat. `char`
-   *  narrows the pin to the syllable starting at that character (0/absent =
-   *  the whole word). */
+  /** Word `word` of bar `bar`'s phrase, for highlighting it. `char`
+   *  narrows the highlight to the syllable starting at that character
+   *  (0/absent = the whole word). */
   | {
       kind: "word";
       sectionId: string;

@@ -22,21 +22,18 @@ export interface Bar {
 }
 
 /**
- * Pin one word of a lyric phrase to a beat of its bar, so lyrics track the
- * chord/beat layout instead of just hanging under the bar. Anchors are
- * sparse: most words stay unanchored and flow between the anchored ones.
- * Within a span, anchors are sorted by `word` with strictly increasing
- * `beat` (words can't sing out of order).
+ * Highlight one word (or the syllable starting mid-word) of a lyric
+ * phrase, so the singer can mentally tie it to the bar's chords/beats.
+ * Purely visual — no beat is stored, and playback ignores marks. Within a
+ * span, marks are sorted by (word, char) and unique.
  */
-export interface WordAnchor {
+export interface WordMark {
   /** Index into the phrase's words (whitespace-split, see lyricWords). */
   word: number;
-  /** 0-based beat within the bar, an integer < the bar's total beats. */
-  beat: number;
   /**
-   * Character offset within the word where the anchored syllable starts
-   * (0/absent = the word's start). Lets a beat land mid-word: "so·ñado"
-   * anchored at char 2 starts a new segment at "ñado".
+   * Character offset within the word where the highlight starts
+   * (0/absent = the whole word). Lets a highlight land mid-word:
+   * "so·ñado" marked at char 2 highlights "ñado".
    */
   char?: number;
 }
@@ -46,15 +43,8 @@ export interface LyricSpan {
   text: string;
   /** Index into the line's `bars` array. */
   bar: number;
-  /** Beat anchors for individual words; absent = the whole phrase just
-   *  sits under the bar (the pre-anchor rendering). */
-  anchors?: WordAnchor[];
-  /**
-   * Anacrusis: how many leading words are sung *before* this bar's
-   * downbeat (pickup notes). Rendered hanging left of the bar; excluded
-   * from the beat layout. Absent/0 = the phrase starts on the bar.
-   */
-  lead?: number;
+  /** Highlighted words/syllables; absent = plain text. */
+  marks?: WordMark[];
 }
 
 /** One row of bars in the grid, with lyrics aligned underneath. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeSongData } from "../normalize";
-import type { SongData } from "../types";
+import type { LyricSpan, SongData } from "../types";
 import { bar, line } from "./helpers";
 
 function songWith(l: ReturnType<typeof line>): SongData {
@@ -11,100 +11,79 @@ function songWith(l: ReturnType<typeof line>): SongData {
 }
 
 describe("normalizeSongData", () => {
-  it("returns pre-anchor blobs by reference", () => {
+  it("returns unmarked blobs by reference", () => {
     const data = songWith(line([bar("C"), bar("F")], { 0: "hello world" }));
     expect(normalizeSongData(data)).toBe(data);
   });
 
-  it("returns already-valid anchored blobs by reference", () => {
+  it("returns already-valid marked blobs by reference", () => {
     const data = songWith(
       line([bar("C")], {
-        0: { text: "oh what a night", anchors: [{ word: 2, beat: 2 }] },
+        0: { text: "oh what a night", marks: [{ word: 2 }] },
       })
     );
     expect(normalizeSongData(data)).toBe(data);
   });
 
-  it("drops out-of-range and misordered anchors, keeping valid ones", () => {
+  it("drops out-of-range and duplicate marks, keeping valid ones", () => {
     const data = songWith(
       line([bar("C")], {
         0: {
           text: "oh what a night",
-          anchors: [
-            { word: 1, beat: 2 },
-            { word: 2, beat: 1 }, // beat goes backwards → dropped
-            { word: 3, beat: 9 }, // beat past the bar → dropped
+          marks: [
+            { word: 1 },
+            { word: 1 }, // duplicate → dropped
+            { word: 9 }, // no such word → dropped
+            { word: 0, char: 7 }, // char past "oh" → dropped
           ],
         },
       })
     );
     const out = normalizeSongData(data);
     expect(out).not.toBe(data);
-    expect(out.sections.v.lines[0].lyrics[0].anchors).toEqual([
-      { word: 1, beat: 2 },
-    ]);
+    expect(out.sections.v.lines[0].lyrics[0].marks).toEqual([{ word: 1 }]);
   });
 
-  it("sorts anchors by word and removes the field when none survive", () => {
+  it("sorts marks by word and removes the field when none survive", () => {
     const sortable = songWith(
       line([bar("C")], {
         0: {
           text: "oh what a night",
-          anchors: [
-            { word: 2, beat: 2 },
-            { word: 0, beat: 0 },
-          ],
+          marks: [{ word: 2 }, { word: 0 }],
         },
       })
     );
     expect(
-      normalizeSongData(sortable).sections.v.lines[0].lyrics[0].anchors
-    ).toEqual([
-      { word: 0, beat: 0 },
-      { word: 2, beat: 2 },
-    ]);
+      normalizeSongData(sortable).sections.v.lines[0].lyrics[0].marks
+    ).toEqual([{ word: 0 }, { word: 2 }]);
 
     const hopeless = songWith(
-      line([bar("C")], {
-        0: { text: "hi", anchors: [{ word: 5, beat: 0 }] },
-      })
+      line([bar("C")], { 0: { text: "hi", marks: [{ word: 5 }] } })
     );
     expect(
-      normalizeSongData(hopeless).sections.v.lines[0].lyrics[0].anchors
+      normalizeSongData(hopeless).sections.v.lines[0].lyrics[0].marks
     ).toBeUndefined();
   });
 
-  it("re-syncs linked sections saved before links shared chords, then cleans anchors against the synced bars", () => {
-    // p claims "chords same as v" but drifted: different chords, and an
-    // anchor only valid against its stale 4-beat bar (v's bar has 2 beats).
-    const data: SongData = {
-      sections: {
-        v: {
-          label: "Verse",
-          color: "blue",
-          lines: [line([{ chords: [{ sym: "C", beats: 2 }] }])],
-        },
-        p: {
-          label: "Pre",
-          color: "teal",
-          lines: [
-            line([bar("Am")], {
-              0: { text: "oh what a night", anchors: [{ word: 2, beat: 3 }] },
-            }),
-          ],
-        },
-      },
-      arrangement: [
-        { ref: "v", instanceLabel: "Verse 1" },
-        { ref: "p", instanceLabel: "Pre", sameChordsAs: "v" },
+  it("migrates legacy word→beat anchors and pickup counts to plain highlights", () => {
+    const legacySpan = {
+      text: "y como te he soñado",
+      bar: 0,
+      anchors: [
+        { word: 2, beat: 0 },
+        { word: 4, beat: 2, char: 2 },
       ],
-    };
+      lead: 2,
+    } as LyricSpan;
+    const data = songWith({ bars: [bar("C")], lyrics: [legacySpan] });
     const out = normalizeSongData(data);
-    expect(out.sections.p.lines[0].bars[0]).toEqual({
-      chords: [{ sym: "C", beats: 2 }],
+    const span = out.sections.v.lines[0].lyrics[0];
+    expect(span).toEqual({
+      text: "y como te he soñado",
+      bar: 0,
+      marks: [{ word: 2 }, { word: 4, char: 2 }],
     });
-    // The beat-3 anchor is out of range for the synced 2-beat bar.
-    expect(out.sections.p.lines[0].lyrics[0].anchors).toBeUndefined();
-    expect(out.sections.p.lines[0].lyrics[0].text).toBe("oh what a night");
+    expect("anchors" in span).toBe(false);
+    expect("lead" in span).toBe(false);
   });
 });

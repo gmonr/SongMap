@@ -4,25 +4,25 @@ import type { ReactNode } from "react";
 
 /**
  * The selected word's letters with a slim tappable gap between each pair,
- * docked next to the AnchorDots: tapping a gap starts the pin at that
+ * docked in the SelectionBar: tapping a gap starts the highlight at that
  * character (a syllable — "so·ñado"), tapping the active gap goes back to
- * the whole word. Gaps that already carry an anchor show a dot.
+ * the whole word. Gaps that already carry a highlight show a marker.
  */
 export function SyllableGaps({
   word,
   selChar,
-  anchoredChars,
+  markedChars,
   onPick,
 }: {
   word: string;
   /** The selection's current char offset (0 = whole word). */
   selChar: number;
-  /** Char offsets of this word's existing anchors (excluding 0). */
-  anchoredChars: Set<number>;
+  /** Char offsets of this word's existing highlights (excluding 0). */
+  markedChars: Set<number>;
   onPick: (char: number) => void;
 }) {
   // Split on code points so accented letters stay whole; gaps are addressed
-  // by code-unit offset, matching how anchors slice the word.
+  // by code-unit offset, matching how highlights slice the word.
   const letters = Array.from(word);
   const nodes: ReactNode[] = [];
   let offset = 0;
@@ -36,7 +36,9 @@ export function SyllableGaps({
           type="button"
           onClick={() => onPick(active ? 0 : at)}
           title={
-            active ? "Pin the whole word instead" : "Start the pin here"
+            active
+              ? "Highlight the whole word instead"
+              : "Start the highlight here"
           }
           aria-pressed={active}
           className="group relative z-10 flex h-11 w-4 shrink-0 items-center justify-center"
@@ -45,7 +47,7 @@ export function SyllableGaps({
             className={`rounded transition-all ${
               active
                 ? "h-5 w-1 bg-blue-600"
-                : anchoredChars.has(at)
+                : markedChars.has(at)
                   ? "h-4 w-0.5 bg-blue-400"
                   : "h-3 w-px bg-slate-300 group-hover:w-1 group-hover:bg-blue-400"
             }`}

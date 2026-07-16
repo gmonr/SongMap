@@ -155,7 +155,7 @@ export function linkChords(
 /* ------------------------------------------------------------------ */
 /* Linked-chord sync: sameChordsAs sections genuinely share one chord  */
 /* progression. Editing any member updates all of them; lyrics, word   */
-/* anchors, and row layout stay each section's own.                    */
+/* marks, and row layout stay each section's own.                   */
 
 /** The section's link source, when the link is section-wide: every
  *  arrangement instance of `id` carries the same `sameChordsAs` (pointing
@@ -319,7 +319,7 @@ export function findMatchingBars(
 /**
  * Stamp the chords of the bar at `source` onto every bar in `targets`
  * (fresh ChordCell copies — bars never share cell objects). Each target's
- * lyrics, word anchors, and row layout are untouched; targets that already
+ * lyrics, word highlights, and row layout are untouched; targets that already
  * match the source (or don't exist) are skipped. Same-reference no-op when
  * there is nothing to change.
  */

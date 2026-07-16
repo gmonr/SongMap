@@ -17,9 +17,9 @@ import type { ReshapeSelection } from "./ReshapeView";
  * - A bar's chord header: tap to pick up its whole phrase; ◀ ▶ shift it a
  *   bar at a time (occupied neighbors ripple into the row's first empty
  *   bar) and ✎ retypes its words.
- * - A word chip: tap to pick the word up, then pin it to a beat of its bar
- *   with the beat dots in the SelectionBar. Pinned words show a dot and
- *   render bold.
+ * - A word chip: tap to pick the word up, then highlight it (or one of its
+ *   syllables) with the ☆ toggle in the SelectionBar. Highlighted words
+ *   show a dot and render bold.
  *
  * Word moves are row-local: to move words between rows, merge the rows in
  * Rows mode first.
@@ -83,10 +83,9 @@ export function LyricsSection({
           <div key={li} className="flex flex-wrap items-stretch gap-y-2">
             {layout.bars.map((b, bi) => {
               const span = line.lyrics.find((s) => s.bar === bi);
-              const anchoredWords = new Set(
-                span?.anchors?.map((a) => a.word) ?? []
+              const markedWords = new Set(
+                span?.marks?.map((m) => m.word) ?? []
               );
-              const lead = span?.lead ?? 0;
               const selWord =
                 sel?.kind === "word" &&
                 sel.sectionId === sectionId &&
@@ -184,23 +183,16 @@ export function LyricsSection({
                                         }
                                   )
                                 }
-                                title="Pick up this word to pin it to a beat"
+                                title="Pick up this word to highlight it"
                                 aria-pressed={selWord === wi}
                                 className={`flex items-center gap-1 rounded border px-1 py-0.5 text-xs ${
                                   selWord === wi
                                     ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300"
                                     : "border-slate-200 bg-white hover:border-blue-300"
-                                } ${anchoredWords.has(wi) ? "font-semibold" : ""} ${
-                                  wi < lead ? "italic text-slate-400" : ""
-                                }`}
+                                } ${markedWords.has(wi) ? "font-semibold" : ""}`}
                               >
-                                {wi === 0 && lead > 0 && (
-                                  <span className="text-slate-400" aria-hidden>
-                                    ↰
-                                  </span>
-                                )}
                                 {w}
-                                {anchoredWords.has(wi) && (
+                                {markedWords.has(wi) && (
                                   <span
                                     className="h-1.5 w-1.5 rounded-full bg-blue-500"
                                     aria-hidden

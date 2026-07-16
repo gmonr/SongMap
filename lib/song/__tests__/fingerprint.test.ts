@@ -182,13 +182,13 @@ describe("syncLinkedChords", () => {
         v: section("Verse", [
           line([bar("Em"), bar("D"), bar("G"), bar("C")], {
             0: "you call me",
-            2: { text: "tellin me", anchors: [{ word: 1, beat: 2 }] },
+            2: { text: "tellin me", marks: [{ word: 1 }] },
           }),
         ]),
         p: section("Pre", [
           line([bar("Em"), bar("D")], { 0: "otra letra" }),
           line([bar("G"), bar("C")], {
-            0: { text: "mas palabras", anchors: [{ word: 1, beat: 1 }] },
+            0: { text: "mas palabras", marks: [{ word: 1 }] },
           }),
         ]),
       },
@@ -230,14 +230,14 @@ describe("syncLinkedChords", () => {
         v: section("Verse", [
           line([bar("Em"), bar("D"), bar("G", "G/B"), bar("C")], {
             0: "you call me",
-            2: { text: "tellin me", anchors: [{ word: 1, beat: 2 }] },
+            2: { text: "tellin me", marks: [{ word: 1 }] },
           }),
         ]),
       },
     };
     const out = syncLinkedChords(edited, "v");
     expect(barFingerprint(out.sections.p.lines[1].bars[0])).toBe("G:2|G/B:2");
-    // Unchanged bars, lyrics, anchors, and row layout survive by reference.
+    // Unchanged bars, lyrics, marks, and row layout survive by reference.
     expect(out.sections.p.lines[0]).toBe(edited.sections.p.lines[0]);
     expect(out.sections.p.lines[1].lyrics).toBe(
       edited.sections.p.lines[1].lyrics
@@ -341,7 +341,7 @@ describe("bar propagation", () => {
         v: section("Estrofa", [
           line([bar("G"), bar("C")], { 0: "una", 1: "letra" }),
           line([bar("G"), bar("D")], {
-            0: { text: "dos palabras", anchors: [{ word: 1, beat: 2 }] },
+            0: { text: "dos palabras", marks: [{ word: 1 }] },
           }),
         ]),
         c: section("Coro", [line([bar("Am"), bar("G")])]),
@@ -375,7 +375,7 @@ describe("bar propagation", () => {
     expect(findMatchingBars(data, "F#m:4")).toEqual([]);
   });
 
-  it("propagates the source bar's chords, leaving lyrics and anchors alone", () => {
+  it("propagates the source bar's chords, leaving lyrics and marks alone", () => {
     const data = makeData();
     // The user re-split v[0][0] into G:2|G/B:2; stamp the two other "G:4"s.
     const edited: SongData = {
@@ -403,7 +403,7 @@ describe("bar propagation", () => {
 
     expect(barFingerprint(out.sections.v.lines[1].bars[0])).toBe("G:2|G/B:2");
     expect(barFingerprint(out.sections.c.lines[0].bars[1])).toBe("G:2|G/B:2");
-    // Untouched bars and every lyric span (anchors included) survive as-is.
+    // Untouched bars and every lyric span (marks included) survive as-is.
     expect(out.sections.v.lines[0]).toBe(edited.sections.v.lines[0]);
     expect(out.sections.c.lines[0].bars[0]).toBe(
       edited.sections.c.lines[0].bars[0]
