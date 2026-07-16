@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import { deleteSong } from "@/app/songs/actions";
 import { TapTempoButton } from "@/components/tempo/TapTempoButton";
 import { TempoLookup } from "@/components/tempo/TempoLookup";
+import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -509,6 +510,8 @@ export function SongEditor({ song }: { song: SongRow }) {
           + Add section
         </button>
       </div>
+
+      <SectionMatchBanner data={data} onApply={setData} />
 
       {/* Arrangement */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

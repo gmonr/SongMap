@@ -33,6 +33,7 @@ import {
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
+import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
 import { AnchorDots } from "./AnchorDots";
 import { lyricFor } from "./BarChip";
 import { BeatDots } from "./BeatDots";
@@ -185,6 +186,15 @@ export function ReshapeView({
         [id]: { ...data.sections[id], lines: next },
       },
     });
+  };
+
+  // Whole-song edits (section merges/links) — same undo history; the
+  // selection clears because section ids may vanish underneath it.
+  const applyData = (next: SongData) => {
+    if (next === data) return;
+    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    setSel(null);
+    setData(next);
   };
 
   const undo = () => {
@@ -678,6 +688,8 @@ export function ReshapeView({
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
         {HINTS[mode]}
       </p>
+
+      <SectionMatchBanner data={data} onApply={applyData} />
 
       {orderedIds.map((id) => {
         const def = data.sections[id];
