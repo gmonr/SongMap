@@ -62,6 +62,7 @@ export interface UGTabSuccess {
   artist?: string;
   key?: string;
   capo?: number;
+  tempo?: number;
   sourceUrl: string;
 }
 export interface UGTabFailure {
@@ -91,6 +92,7 @@ export async function fetchUltimateGuitarTab(
       artist: tab.artistName,
       key: tab.tonality,
       capo: tab.capo,
+      tempo: tab.tempo,
       sourceUrl: tabUrl,
     };
   } catch {

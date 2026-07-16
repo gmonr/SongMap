@@ -38,6 +38,7 @@ export interface ImportedSongInput {
   data: SongData;
   source_url?: string | null;
   capo?: number | null;
+  tempo?: number | null;
 }
 
 function sanitizeSourceUrl(url: string | null | undefined): string | null {
@@ -78,6 +79,12 @@ export async function createImportedSong(input: ImportedSongInput) {
         typeof input.capo === "number" && input.capo > 0
           ? Math.min(Math.trunc(input.capo), 12)
           : 0,
+      tempo:
+        typeof input.tempo === "number" &&
+        input.tempo >= 20 &&
+        input.tempo <= 300
+          ? Math.trunc(input.tempo)
+          : null,
     })
     .select("id")
     .single();

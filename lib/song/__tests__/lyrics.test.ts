@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  anchorsAfterRetype,
   lineWordLayout,
   setBarLyric,
+  setLead,
   setWordBoundary,
   shiftLyric,
 } from "../lyrics";
@@ -130,5 +132,129 @@ describe("shiftLyric", () => {
     const l = line([bar("C"), bar("F")], { 0: "a" });
     expect(shiftLyric(l, 0, -1)).toBe(l); // would leave the row
     expect(shiftLyric(l, 1, 1)).toBe(l); // no lyric at source
+  });
+});
+
+describe("word→beat anchors across lyric ops", () => {
+  it("setWordBoundary keeps staying words' anchors, reindexing the right bar", () => {
+    const l = line([bar("C"), bar("F")], {
+      0: { text: "oh what a", anchors: [{ word: 1, beat: 2 }] },
+      1: { text: "night we had", anchors: [{ word: 1, beat: 1 }] },
+    });
+    // Boundary moves right by one: "night" transfers to the left bar.
+    const next = setWordBoundary(l, 1, 4);
+    expect(next.lyrics.find((s) => s.bar === 0)?.anchors).toEqual([
+      { word: 1, beat: 2 }, // "what" stayed put
+    ]);
+    expect(next.lyrics.find((s) => s.bar === 1)?.anchors).toEqual([
+      { word: 0, beat: 1 }, // "we" reindexed from word 1 to 0
+    ]);
+  });
+
+  it("setWordBoundary un-anchors words that changed bars", () => {
+    const l = line([bar("C"), bar("F")], {
+      0: { text: "oh what a", anchors: [{ word: 2, beat: 3 }] },
+      1: "night",
+    });
+    // "a" moves into the right bar: its beat belonged to the left bar.
+    const next = setWordBoundary(l, 1, 2);
+    expect(next.lyrics.find((s) => s.bar === 0)?.anchors).toBeUndefined();
+    expect(next.lyrics.find((s) => s.bar === 1)?.anchors).toBeUndefined();
+  });
+
+  it("setBarLyric keeps anchors on a same-word-count retype, drops otherwise", () => {
+    const l = line([bar("C")], {
+      0: { text: "oh whut a night", anchors: [{ word: 1, beat: 1 }] },
+    });
+    const fixed = setBarLyric(l, 0, "oh what a night");
+    expect(fixed.lyrics[0].anchors).toEqual([{ word: 1, beat: 1 }]);
+    const rewritten = setBarLyric(l, 0, "completely different words here now");
+    expect(rewritten.lyrics[0].anchors).toBeUndefined();
+  });
+
+  it("shiftLyric carries a phrase's anchors to its new bar", () => {
+    const l = line([bar("C"), bar("F")], {
+      0: { text: "hey now", anchors: [{ word: 1, beat: 2 }] },
+    });
+    const next = shiftLyric(l, 0, 1);
+    expect(next.lyrics).toEqual([
+      { text: "hey now", bar: 1, anchors: [{ word: 1, beat: 2 }] },
+    ]);
+  });
+});
+
+describe("anchorsAfterRetype", () => {
+  it("keeps word pins and in-range syllable pins, drops the rest", () => {
+    expect(
+      anchorsAfterRetype(
+        [
+          { word: 0, beat: 0 },
+          { word: 1, beat: 2, char: 4 },
+        ],
+        ["oh", "night"]
+      )
+    ).toEqual([
+      { word: 0, beat: 0 },
+      { word: 1, beat: 2, char: 4 },
+    ]);
+    // The retyped word got shorter than the syllable offset.
+    expect(
+      anchorsAfterRetype([{ word: 1, beat: 2, char: 4 }], ["oh", "hey"])
+    ).toBeUndefined();
+  });
+});
+
+describe("setLead (anacrusis)", () => {
+  const l = line([bar("C"), bar("F")], { 0: "y como te he soñado" });
+
+  it("marks and clears the pickup, dropping pins on pickup words", () => {
+    const withPin = line([bar("C")], {
+      0: {
+        text: "y como te he soñado",
+        anchors: [
+          { word: 0, beat: 0 },
+          { word: 2, beat: 2 },
+        ],
+      },
+    });
+    const led = setLead(withPin, 0, 2);
+    expect(led.lyrics[0].lead).toBe(2);
+    // The word-0 pin sat on a pickup word — it un-pins.
+    expect(led.lyrics[0].anchors).toEqual([{ word: 2, beat: 2 }]);
+    const cleared = setLead(led, 0, 0);
+    expect(cleared.lyrics[0].lead).toBeUndefined();
+  });
+
+  it("no-ops by reference on bad targets", () => {
+    expect(setLead(l, 1, 1)).toBe(l); // bar 1 has no lyric
+    expect(setLead(l, 0, 5)).toBe(l); // every word can't be pickup
+    expect(setLead(l, 0, -1)).toBe(l);
+    expect(setLead(l, 0, 0)).toBe(l); // already no pickup
+  });
+
+  it("survives ops that keep the phrase's words", () => {
+    const led = setLead(l, 0, 1);
+    expect(shiftLyric(led, 0, 1).lyrics[0]).toEqual({
+      text: "y como te he soñado",
+      bar: 1,
+      lead: 1,
+    });
+    expect(setBarLyric(led, 0, "y como te he sonado").lyrics[0].lead).toBe(1);
+    expect(
+      setBarLyric(led, 0, "different words").lyrics[0].lead
+    ).toBeUndefined();
+  });
+
+  it("setWordBoundary shifts the downbeat marker with transferred words", () => {
+    const two = line([bar("C"), bar("F")], {
+      0: "oh what",
+      1: { text: "a night we", lead: 1 },
+    });
+    // One word moves left→right: the pickup grows to cover it.
+    const grown = setWordBoundary(two, 1, 1);
+    expect(grown.lyrics.find((s) => s.bar === 1)?.lead).toBe(2);
+    // Words moving right→left shrink it to nothing.
+    const shrunk = setWordBoundary(two, 1, 3);
+    expect(shrunk.lyrics.find((s) => s.bar === 1)?.lead).toBeUndefined();
   });
 });

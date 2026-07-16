@@ -1,4 +1,4 @@
-import type { Bar, Line } from "../types";
+import type { Bar, Line, WordAnchor } from "../types";
 
 /** Bar with the given chord syms, beats split naively (tests fix as needed). */
 export function bar(...syms: string[]): Bar {
@@ -6,14 +6,22 @@ export function bar(...syms: string[]): Bar {
   return { chords: syms.map((sym) => ({ sym, beats: 4 / syms.length })) };
 }
 
-/** Line from bars plus a sparse lyric map { barIndex: text }. */
-export function line(bars: Bar[], lyrics: Record<number, string> = {}): Line {
+/** Line from bars plus a sparse lyric map { barIndex: text }; a value may
+ *  also carry word→beat anchors and/or a pickup-word count. */
+export function line(
+  bars: Bar[],
+  lyrics: Record<
+    number,
+    string | { text: string; anchors?: WordAnchor[]; lead?: number }
+  > = {}
+): Line {
   return {
     bars,
-    lyrics: Object.entries(lyrics).map(([bi, text]) => ({
-      bar: Number(bi),
-      text,
-    })),
+    lyrics: Object.entries(lyrics).map(([bi, v]) =>
+      typeof v === "string"
+        ? { bar: Number(bi), text: v }
+        : { bar: Number(bi), text: v.text, anchors: v.anchors, lead: v.lead }
+    ),
   };
 }
 

@@ -13,6 +13,7 @@ export interface UGPick {
   artist?: string;
   key?: string;
   capo?: number;
+  tempo?: number;
   sourceUrl: string;
 }
 
@@ -53,6 +54,7 @@ export function UGSearch({ onPick }: { onPick: (tab: UGPick) => void }) {
         artist: tab.artist,
         key: tab.key,
         capo: tab.capo,
+        tempo: tab.tempo,
         sourceUrl: tab.sourceUrl,
       });
     });

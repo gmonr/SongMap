@@ -205,6 +205,61 @@ describe("parseTabPage", () => {
     expect(tab.content).not.toContain("\r");
   });
 
+  it("extracts bpm from the first plausible strummings entry", () => {
+    const tab = parseTabPage({
+      store: {
+        page: {
+          data: {
+            tab_view: {
+              wiki_tab: { content: "[ch]C[/ch]" },
+              strummings: [
+                { part: "Intro", bpm: 0 },
+                { part: "Main Pattern", bpm: 64.4 },
+                { part: "Chorus", bpm: 120 },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(tab.tempo).toBe(64);
+  });
+
+  it("leaves tempo undefined without plausible strummings", () => {
+    const noStrummings = parseTabPage(tabStore);
+    expect(noStrummings.tempo).toBeUndefined();
+
+    const junk = parseTabPage({
+      store: {
+        page: {
+          data: {
+            tab_view: {
+              wiki_tab: { content: "[ch]C[/ch]" },
+              strummings: [
+                { bpm: 0 },
+                { bpm: 9999 },
+                { bpm: "fast" },
+                "not an object",
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(junk.tempo).toBeUndefined();
+
+    const notArray = parseTabPage({
+      store: {
+        page: {
+          data: {
+            tab_view: { wiki_tab: { content: "[ch]C[/ch]" }, strummings: {} },
+          },
+        },
+      },
+    });
+    expect(notArray.tempo).toBeUndefined();
+  });
+
   it("leaves absent tonality/capo undefined", () => {
     const tab = parseTabPage({
       store: {

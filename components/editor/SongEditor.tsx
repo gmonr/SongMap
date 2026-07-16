@@ -4,17 +4,22 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SECTION_COLOR_NAMES, sectionColor } from "@/lib/song/colors";
+import { anchorsAfterRetype, lyricWords } from "@/lib/song/lyrics";
 import { KEYS, parseKey } from "@/lib/song/theory";
 import {
   beatsPerBar,
   type Bar,
   type Line,
+  type LyricSpan,
   type SectionDef,
   type SongData,
   type SongRow,
 } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
 import { deleteSong } from "@/app/songs/actions";
+import { TapTempoButton } from "@/components/tempo/TapTempoButton";
+import { TempoLookup } from "@/components/tempo/TempoLookup";
+import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -167,8 +172,18 @@ function SectionEditor({
 
   const setLyric = (li: number, barIdx: number, text: string) => {
     const line = def.lines[li];
+    const old = line.lyrics.find((s) => s.bar === barIdx);
     const lyrics = line.lyrics.filter((s) => s.bar !== barIdx);
-    if (text) lyrics.push({ text, bar: barIdx });
+    if (text) {
+      const span: LyricSpan = { text, bar: barIdx };
+      // Word→beat anchors (set in reshape) survive edits that keep the word
+      // count — fixing a typo keeps the alignment; rewriting drops it.
+      const words = lyricWords(text);
+      if (old?.anchors && words.length === lyricWords(old.text).length) {
+        span.anchors = anchorsAfterRetype(old.anchors, words);
+      }
+      lyrics.push(span);
+    }
     lyrics.sort((a, b) => a.bar - b.bar);
     setLine(li, { ...line, lyrics });
   };
@@ -461,6 +476,15 @@ export function SongEditor({ song }: { song: SongRow }) {
             />
           </label>
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <TapTempoButton onTempo={(bpm) => setTempo(String(bpm))} />
+          <TempoLookup
+            artist={artist}
+            title={title}
+            currentTempo={tempo ? parseInt(tempo, 10) : null}
+            onUse={(bpm) => setTempo(String(bpm))}
+          />
+        </div>
       </div>
 
       {/* Sections */}
@@ -486,6 +510,8 @@ export function SongEditor({ song }: { song: SongRow }) {
           + Add section
         </button>
       </div>
+
+      <SectionMatchBanner data={data} onApply={setData} />
 
       {/* Arrangement */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

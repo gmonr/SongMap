@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Bar } from "@/lib/song/types";
+import { anchorSegments, leadText } from "@/lib/song/anchors";
+import type { Bar, LyricSpan } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
 import { ChordSym } from "./ChordSym";
@@ -29,12 +30,13 @@ function BeatDots({ count }: { count: number }) {
  */
 export function BarCell({
   bar,
-  lyric,
+  span,
   showLyrics,
   songKey,
   displayKey,
   notation,
   borderColor,
+  emphasisColor = "text-slate-900",
   masked = false,
   onReveal,
   flash = false,
@@ -42,12 +44,15 @@ export function BarCell({
   onChordTap,
 }: {
   bar: Bar;
-  lyric?: string;
+  /** This bar's lyric phrase (with any word→beat anchors). */
+  span?: LyricSpan;
   showLyrics: boolean;
   songKey: string;
   displayKey: string;
   notation: Notation;
   borderColor: string;
+  /** Text color class for beat-anchored syllables (the section's accent). */
+  emphasisColor?: string;
   masked?: boolean;
   onReveal?: () => void;
   /** Landing back from reshape: scroll here and flash once. */
@@ -141,11 +146,41 @@ export function BarCell({
           </div>
         ))}
       </div>
-      {showLyrics && (
-        <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
-          {lyric ?? ""}
-        </p>
-      )}
+      {showLyrics &&
+        (span?.anchors?.length || span?.lead ? (
+          // Anchored lyric: segments mirror the chord row's beat-weighted
+          // flex layout, so each anchored word starts where its beat does.
+          // Pickup words hang left of the bar, like a real chart's anacrusis.
+          <div className="relative mt-1 flex min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+            {!!span.lead && (
+              <span className="absolute right-full top-0 max-w-24 truncate pr-1 italic text-slate-400">
+                {leadText(span)}
+              </span>
+            )}
+            {anchorSegments(bar, span).map((seg, i) => (
+              <span
+                key={i}
+                className="min-w-0"
+                style={{ flexGrow: seg.grow, flexBasis: 0 }}
+              >
+                {seg.emphLen > 0 ? (
+                  <>
+                    <b className={`font-bold ${emphasisColor}`}>
+                      {seg.text.slice(0, seg.emphLen)}
+                    </b>
+                    {seg.text.slice(seg.emphLen)}
+                  </>
+                ) : (
+                  seg.text
+                )}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+            {span?.text ?? ""}
+          </p>
+        ))}
     </div>
   );
 }
