@@ -82,11 +82,11 @@ export function LyricsSection({
         return (
           <div key={li} className="flex flex-wrap items-stretch gap-y-2">
             {layout.bars.map((b, bi) => {
+              const span = line.lyrics.find((s) => s.bar === bi);
               const anchoredWords = new Set(
-                line.lyrics
-                  .find((s) => s.bar === bi)
-                  ?.anchors?.map((a) => a.word) ?? []
+                span?.anchors?.map((a) => a.word) ?? []
               );
+              const lead = span?.lead ?? 0;
               const selWord =
                 sel?.kind === "word" &&
                 sel.sectionId === sectionId &&
@@ -190,8 +190,15 @@ export function LyricsSection({
                                   selWord === wi
                                     ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300"
                                     : "border-slate-200 bg-white hover:border-blue-300"
-                                } ${anchoredWords.has(wi) ? "font-semibold" : ""}`}
+                                } ${anchoredWords.has(wi) ? "font-semibold" : ""} ${
+                                  wi < lead ? "italic text-slate-400" : ""
+                                }`}
                               >
+                                {wi === 0 && lead > 0 && (
+                                  <span className="text-slate-400" aria-hidden>
+                                    ↰
+                                  </span>
+                                )}
                                 {w}
                                 {anchoredWords.has(wi) && (
                                   <span

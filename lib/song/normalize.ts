@@ -29,21 +29,38 @@ function normalizeAnchors(
 }
 
 function normalizeSpan(span: LyricSpan, line: Line): LyricSpan {
-  if (!span.anchors || span.anchors.length === 0) return span;
+  if (!span.anchors?.length && !span.lead) return span;
   const bar = line.bars[span.bar];
   if (!bar) return span; // out-of-range spans are dropped by fromDense paths
-  const next = normalizeAnchors(
-    span.anchors,
-    lyricWords(span.text),
-    barTotalBeats(bar)
-  );
+  const words = lyricWords(span.text);
+
+  const leadValid =
+    span.lead !== undefined &&
+    Number.isInteger(span.lead) &&
+    span.lead >= 1 &&
+    span.lead < words.length;
+  const lead = leadValid ? span.lead : undefined;
+
+  const next = span.anchors?.length
+    ? normalizeAnchors(
+        span.anchors.filter((a) => a.word >= (lead ?? 0)),
+        words,
+        barTotalBeats(bar)
+      )
+    : null;
+
   const unchanged =
-    next !== null &&
-    next.length === span.anchors.length &&
-    next.every((a, i) => a === span.anchors![i]);
+    lead === span.lead &&
+    (span.anchors === undefined
+      ? next === null
+      : next !== null &&
+        next.length === span.anchors.length &&
+        next.every((a, i) => a === span.anchors![i]));
   if (unchanged) return span;
+
   const out: LyricSpan = { text: span.text, bar: span.bar };
   if (next) out.anchors = next;
+  if (lead) out.lead = lead;
   return out;
 }
 

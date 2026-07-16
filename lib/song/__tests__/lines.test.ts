@@ -138,7 +138,7 @@ describe("word→beat anchors across line ops", () => {
     ]);
   });
 
-  it("deleteBar drops the merged span's anchors", () => {
+  it("deleteBar keeps the heir's anchors when appending, drops the removed span's", () => {
     const rows = [
       line([bar("C"), bar("F")], {
         0: { text: "oh what", anchors: [{ word: 1, beat: 2 }] },
@@ -146,6 +146,19 @@ describe("word→beat anchors across line ops", () => {
       }),
     ];
     const out = deleteBar(rows, 0, 1);
+    expect(out[0].lyrics).toEqual([
+      { text: "oh what a night", bar: 0, anchors: [{ word: 1, beat: 2 }] },
+    ]);
+  });
+
+  it("deleteBar drops anchors when the removed lyric prepends (first bar)", () => {
+    const rows = [
+      line([bar("C"), bar("F")], {
+        0: "oh what",
+        1: { text: "a night", anchors: [{ word: 1, beat: 1 }] },
+      }),
+    ];
+    const out = deleteBar(rows, 0, 0);
     expect(out[0].lyrics).toEqual([{ text: "oh what a night", bar: 0 }]);
   });
 });

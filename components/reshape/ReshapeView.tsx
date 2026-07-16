@@ -18,6 +18,7 @@ import {
   lineWordLayout,
   lyricWords,
   setBarLyric,
+  setLead,
   setWordBoundary,
   shiftLyric,
 } from "@/lib/song/lyrics";
@@ -70,8 +71,11 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       its whole phrase (◀ ▶ shifts it a bar,{" "}
       <b className="font-semibold text-slate-600">✎</b> retypes it). Tap a{" "}
       <b className="font-semibold text-slate-600">word</b> to pin it to a beat
-      of its bar — pinned words track the chords when beat splits move. To
-      move words between rows, merge the rows in Rows mode first.
+      of its bar — pinned words track the chords when beat splits move — or
+      mark it as the downbeat with{" "}
+      <b className="font-semibold text-slate-600">↰ pickup</b> (earlier words
+      sing ahead of the bar). To move words between rows, merge the rows in
+      Rows mode first.
     </>
   ),
   chords: (
@@ -495,31 +499,68 @@ export function ReshapeView({
       ? (lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ?? "")
       : "";
 
+  // ↰ pickup: the selected word becomes the bar's downbeat (every earlier
+  // word sings ahead of the bar); on the current downbeat it clears instead.
+  const selLead = sel?.kind === "word" ? (selSpan?.lead ?? 0) : 0;
+  const pickupTarget = sel?.kind === "word" && sel.word !== selLead ? sel.word : 0;
+  const setPickup = () => {
+    if (sel?.kind !== "word") return;
+    applyToSection(sel.sectionId, (lines) => {
+      const next = setLead(lines[sel.li], sel.bar, pickupTarget);
+      return next === lines[sel.li]
+        ? lines
+        : lines.map((l, i) => (i === sel.li ? next : l));
+    });
+  };
+
+  const wordIsPickup = sel?.kind === "word" && sel.word < selLead;
+
   const wordTools =
     sel?.kind === "word" && selLines?.[sel.li]?.bars[sel.bar] ? (
-      <div className="flex min-w-0 flex-1 flex-col items-stretch">
-        {selWordText.length > 1 && (
-          <SyllableGaps
-            word={selWordText}
-            selChar={selChar}
-            anchoredChars={
-              new Set(
-                selSpan?.anchors
-                  ?.filter((a) => a.word === sel.word && (a.char ?? 0) > 0)
-                  .map((a) => a.char!) ?? []
-              )
-            }
-            onPick={(char) =>
-              setSel({ ...sel, char: char > 0 ? char : undefined })
-            }
-          />
+      <>
+        <button
+          type="button"
+          onClick={setPickup}
+          disabled={pickupTarget === 0 && selLead === 0}
+          title={
+            pickupTarget === 0
+              ? "Clear the pickup — the phrase starts on the bar"
+              : "Words before this one sing ahead of the bar (anacrusis)"
+          }
+          className={toolBtnCls}
+        >
+          {pickupTarget === 0 && selLead > 0 ? "↰ clear pickup" : "↰ pickup"}
+        </button>
+        {wordIsPickup ? (
+          <span className="flex-1 self-center text-center text-xs text-slate-400">
+            pickup word — sings before the bar
+          </span>
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-col items-stretch">
+            {selWordText.length > 1 && (
+              <SyllableGaps
+                word={selWordText}
+                selChar={selChar}
+                anchoredChars={
+                  new Set(
+                    selSpan?.anchors
+                      ?.filter((a) => a.word === sel.word && (a.char ?? 0) > 0)
+                      .map((a) => a.char!) ?? []
+                  )
+                }
+                onPick={(char) =>
+                  setSel({ ...sel, char: char > 0 ? char : undefined })
+                }
+              />
+            )}
+            <AnchorDots
+              bar={selLines[sel.li].bars[sel.bar]}
+              anchorBeat={selAnchorBeat}
+              onSet={setAnchor}
+            />
+          </div>
         )}
-        <AnchorDots
-          bar={selLines[sel.li].bars[sel.bar]}
-          anchorBeat={selAnchorBeat}
-          onSet={setAnchor}
-        />
-      </div>
+      </>
     ) : undefined;
 
   const barTools =

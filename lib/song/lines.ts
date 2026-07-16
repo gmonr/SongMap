@@ -24,6 +24,8 @@ export interface DenseCell {
    *  rewrite `lyric` must update (or drop) these themselves — fromDense
    *  reattaches whatever is here. */
   anchors?: WordAnchor[];
+  /** The lyric's pickup-word count (LyricSpan.lead), same contract. */
+  lead?: number;
 }
 
 /** Pair every bar with its lyric text (sparse spans -> one entry per bar). */
@@ -32,7 +34,12 @@ export function toDense(line: Line): DenseCell[] {
   for (const s of line.lyrics) byBar.set(s.bar, s);
   return line.bars.map((bar, i) => {
     const span = byBar.get(i);
-    return { bar, lyric: span?.text ?? "", anchors: span?.anchors };
+    return {
+      bar,
+      lyric: span?.text ?? "",
+      anchors: span?.anchors,
+      lead: span?.lead,
+    };
   });
 }
 
@@ -42,6 +49,7 @@ export function fromDense(cells: DenseCell[]): Line {
     .map((c, i) => {
       const span: LyricSpan = { text: c.lyric, bar: i };
       if (c.anchors && c.anchors.length > 0) span.anchors = c.anchors;
+      if (c.lead) span.lead = c.lead;
       return span;
     })
     .filter((s) => s.text !== "");
@@ -123,13 +131,15 @@ export function deleteBar(lines: Line[], li: number, bi: number): Line[] {
       heir < bi
         ? [cells[heir].lyric, removed.lyric]
         : [removed.lyric, cells[heir].lyric];
-    // Two phrases just became one: the word indexes its anchors pointed at
-    // no longer mean the same thing, so the merged span starts unanchored
-    // (undo restores them).
+    // Appending after the heir's words keeps its anchors/lead meaningful
+    // (its word indexes don't move); prepending shifts every index, and
+    // there is no honest remap across bars — those drop (undo restores).
+    const appended = heir < bi && cells[heir].lyric !== "";
     cells[heir] = {
       ...cells[heir],
       lyric: joined.filter((t) => t !== "").join(" "),
-      anchors: undefined,
+      anchors: appended ? cells[heir].anchors : undefined,
+      lead: appended ? cells[heir].lead : undefined,
     };
   }
   out.splice(li, 1, fromDense(cells));

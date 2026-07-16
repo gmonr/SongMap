@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   anchorSegments,
   barTotalBeats,
+  leadText,
   setBarBeatBoundary,
   setWordAnchor,
   validAnchors,
@@ -284,5 +285,33 @@ describe("syllable (char) anchors", () => {
       { text: "so", startBeat: 0, grow: 2, anchored: true, emphLen: 2 },
       { text: "ñado", startBeat: 2, grow: 2, anchored: true, emphLen: 4 },
     ]);
+  });
+});
+
+describe("anacrusis in anchors", () => {
+  it("setWordAnchor refuses to pin a pickup word", () => {
+    const l = line([splitBar], {
+      0: { text: "y como te he soñado", anchors: [], lead: 1 },
+    });
+    expect(setWordAnchor(l, 0, 0, 0)).toBe(l);
+    expect(setWordAnchor(l, 0, 1, 0).lyrics[0].anchors).toEqual([
+      { word: 1, beat: 0 },
+    ]);
+  });
+
+  it("anchorSegments excludes pickup words and reindexes anchors", () => {
+    const l = line([splitBar], {
+      0: {
+        text: "y como te he soñado",
+        anchors: [{ word: 4, beat: 2 }],
+        lead: 1,
+      },
+    });
+    expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
+      { text: "como te he", startBeat: 0, grow: 2, anchored: false, emphLen: 0 },
+      { text: "soñado", startBeat: 2, grow: 2, anchored: true, emphLen: 6 },
+    ]);
+    expect(leadText(l.lyrics[0])).toBe("y");
+    expect(leadText(undefined)).toBe("");
   });
 });

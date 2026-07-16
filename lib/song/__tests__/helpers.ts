@@ -7,17 +7,20 @@ export function bar(...syms: string[]): Bar {
 }
 
 /** Line from bars plus a sparse lyric map { barIndex: text }; a value may
- *  also carry word→beat anchors. */
+ *  also carry word→beat anchors and/or a pickup-word count. */
 export function line(
   bars: Bar[],
-  lyrics: Record<number, string | { text: string; anchors: WordAnchor[] }> = {}
+  lyrics: Record<
+    number,
+    string | { text: string; anchors?: WordAnchor[]; lead?: number }
+  > = {}
 ): Line {
   return {
     bars,
     lyrics: Object.entries(lyrics).map(([bi, v]) =>
       typeof v === "string"
         ? { bar: Number(bi), text: v }
-        : { bar: Number(bi), text: v.text, anchors: v.anchors }
+        : { bar: Number(bi), text: v.text, anchors: v.anchors, lead: v.lead }
     ),
   };
 }

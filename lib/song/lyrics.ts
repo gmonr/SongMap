@@ -102,15 +102,25 @@ export function setWordBoundary(
   const rightAnchors = cells[boundary].anchors
     ?.filter((a) => a.word >= Math.max(delta, 0))
     .map((a) => ({ ...a, word: a.word - delta }));
+  // A pickup marker names the downbeat's word index: transferred front
+  // words shift it (never past either end of the new phrase).
+  const leadOf = (cell: { lead?: number }, shift: number, count: number) => {
+    if (!cell.lead) return undefined;
+    const lead = Math.min(Math.max(cell.lead - shift, 0), Math.max(count - 1, 0));
+    return lead > 0 ? lead : undefined;
+  };
+  const rightCount = pair.length - newLeftCount;
   cells[boundary - 1] = {
     ...cells[boundary - 1],
     lyric: pair.slice(0, newLeftCount).join(" "),
     anchors: leftAnchors?.length ? leftAnchors : undefined,
+    lead: leadOf(cells[boundary - 1], 0, newLeftCount),
   };
   cells[boundary] = {
     ...cells[boundary],
     lyric: pair.slice(newLeftCount).join(" "),
     anchors: rightAnchors?.length ? rightAnchors : undefined,
+    lead: leadOf(cells[boundary], delta, rightCount),
   };
   return fromDense(cells);
 }
@@ -139,6 +149,30 @@ export function setBarLyric(line: Line, bar: number, text: string): Line {
     anchors: sameWordCount
       ? anchorsAfterRetype(cells[bar].anchors, words)
       : undefined,
+    lead: sameWordCount ? cells[bar].lead : undefined,
+  };
+  return fromDense(cells);
+}
+
+/**
+ * Mark the first `lead` words of bar `bar`'s phrase as its anacrusis
+ * (pickup — sung before the bar's downbeat); 0 clears the marker. Beat
+ * anchors on the pickup words un-pin (they no longer sit in the bar's beat
+ * layout). Same-reference no-op when the bar has no lyric, `lead` isn't a
+ * sensible count (0 ≤ lead < word count), or nothing changes.
+ */
+export function setLead(line: Line, bar: number, lead: number): Line {
+  const cells = toDense(line);
+  const cell = cells[bar];
+  if (!cell || cell.lyric === "") return line;
+  const count = lyricWords(cell.lyric).length;
+  if (!Number.isInteger(lead) || lead < 0 || lead >= count) return line;
+  if ((cell.lead ?? 0) === lead) return line;
+  const anchors = cell.anchors?.filter((a) => a.word >= lead);
+  cells[bar] = {
+    ...cell,
+    lead: lead > 0 ? lead : undefined,
+    anchors: anchors?.length ? anchors : undefined,
   };
   return fromDense(cells);
 }
@@ -166,10 +200,13 @@ export function shiftLyric(line: Line, from: number, dir: -1 | 1): Line {
   for (let i = end; i !== to; i -= dir) {
     out[i].lyric = out[i - dir].lyric;
     out[i].anchors = anchorsFor(out[i - dir].anchors, out[i].bar);
+    out[i].lead = out[i - dir].lead;
   }
   out[to].lyric = src.lyric;
   out[to].anchors = anchorsFor(src.anchors, out[to].bar);
+  out[to].lead = src.lead;
   out[from].lyric = "";
   out[from].anchors = undefined;
+  out[from].lead = undefined;
   return fromDense(out);
 }

@@ -49,6 +49,12 @@ export interface LyricSpan {
   /** Beat anchors for individual words; absent = the whole phrase just
    *  sits under the bar (the pre-anchor rendering). */
   anchors?: WordAnchor[];
+  /**
+   * Anacrusis: how many leading words are sung *before* this bar's
+   * downbeat (pickup notes). Rendered hanging left of the bar; excluded
+   * from the beat layout. Absent/0 = the phrase starts on the bar.
+   */
+  lead?: number;
 }
 
 /** One row of bars in the grid, with lyrics aligned underneath. */

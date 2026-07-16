@@ -3,6 +3,7 @@ import {
   anchorsAfterRetype,
   lineWordLayout,
   setBarLyric,
+  setLead,
   setWordBoundary,
   shiftLyric,
 } from "../lyrics";
@@ -200,5 +201,60 @@ describe("anchorsAfterRetype", () => {
     expect(
       anchorsAfterRetype([{ word: 1, beat: 2, char: 4 }], ["oh", "hey"])
     ).toBeUndefined();
+  });
+});
+
+describe("setLead (anacrusis)", () => {
+  const l = line([bar("C"), bar("F")], { 0: "y como te he soñado" });
+
+  it("marks and clears the pickup, dropping pins on pickup words", () => {
+    const withPin = line([bar("C")], {
+      0: {
+        text: "y como te he soñado",
+        anchors: [
+          { word: 0, beat: 0 },
+          { word: 2, beat: 2 },
+        ],
+      },
+    });
+    const led = setLead(withPin, 0, 2);
+    expect(led.lyrics[0].lead).toBe(2);
+    // The word-0 pin sat on a pickup word — it un-pins.
+    expect(led.lyrics[0].anchors).toEqual([{ word: 2, beat: 2 }]);
+    const cleared = setLead(led, 0, 0);
+    expect(cleared.lyrics[0].lead).toBeUndefined();
+  });
+
+  it("no-ops by reference on bad targets", () => {
+    expect(setLead(l, 1, 1)).toBe(l); // bar 1 has no lyric
+    expect(setLead(l, 0, 5)).toBe(l); // every word can't be pickup
+    expect(setLead(l, 0, -1)).toBe(l);
+    expect(setLead(l, 0, 0)).toBe(l); // already no pickup
+  });
+
+  it("survives ops that keep the phrase's words", () => {
+    const led = setLead(l, 0, 1);
+    expect(shiftLyric(led, 0, 1).lyrics[0]).toEqual({
+      text: "y como te he soñado",
+      bar: 1,
+      lead: 1,
+    });
+    expect(setBarLyric(led, 0, "y como te he sonado").lyrics[0].lead).toBe(1);
+    expect(
+      setBarLyric(led, 0, "different words").lyrics[0].lead
+    ).toBeUndefined();
+  });
+
+  it("setWordBoundary shifts the downbeat marker with transferred words", () => {
+    const two = line([bar("C"), bar("F")], {
+      0: "oh what",
+      1: { text: "a night we", lead: 1 },
+    });
+    // One word moves left→right: the pickup grows to cover it.
+    const grown = setWordBoundary(two, 1, 1);
+    expect(grown.lyrics.find((s) => s.bar === 1)?.lead).toBe(2);
+    // Words moving right→left shrink it to nothing.
+    const shrunk = setWordBoundary(two, 1, 3);
+    expect(shrunk.lyrics.find((s) => s.bar === 1)?.lead).toBeUndefined();
   });
 });

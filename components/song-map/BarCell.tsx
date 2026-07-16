@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { anchorSegments } from "@/lib/song/anchors";
+import { anchorSegments, leadText } from "@/lib/song/anchors";
 import type { Bar, LyricSpan } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
@@ -147,10 +147,16 @@ export function BarCell({
         ))}
       </div>
       {showLyrics &&
-        (span?.anchors?.length ? (
+        (span?.anchors?.length || span?.lead ? (
           // Anchored lyric: segments mirror the chord row's beat-weighted
           // flex layout, so each anchored word starts where its beat does.
-          <div className="mt-1 flex min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+          // Pickup words hang left of the bar, like a real chart's anacrusis.
+          <div className="relative mt-1 flex min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+            {!!span.lead && (
+              <span className="absolute right-full top-0 max-w-24 truncate pr-1 italic text-slate-400">
+                {leadText(span)}
+              </span>
+            )}
             {anchorSegments(bar, span).map((seg, i) => (
               <span
                 key={i}

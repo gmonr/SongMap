@@ -69,6 +69,8 @@ export function setWordAnchor(
   if (!span) return line;
   const words = lyricWords(span.text);
   if (word < 0 || word >= words.length) return line;
+  // Pickup words sound before the downbeat — they have no beat to pin to.
+  if (word < (span.lead ?? 0)) return line;
   const anchors = span.anchors ?? [];
   const others = anchors.filter(
     (a) => !(a.word === word && anchorChar(a) === char)
@@ -139,14 +141,19 @@ function sliceWords(
  * per anchor running to the next anchor (the last runs to the bar's end).
  * A `char > 0` anchor cuts mid-word ("so" | "ñado"). No anchors → a single
  * full-width segment, which renders exactly like the plain phrase did.
+ * Pickup words (span.lead) are excluded — they sound before the bar and
+ * render separately (see leadText).
  */
 export function anchorSegments(
   bar: Bar,
   span: LyricSpan | undefined
 ): AnchorSegment[] {
   const total = barTotalBeats(bar);
-  const words = span ? lyricWords(span.text) : [];
-  const anchors = span?.anchors ?? [];
+  const lead = span?.lead ?? 0;
+  const words = span ? lyricWords(span.text).slice(lead) : [];
+  const anchors = (span?.anchors ?? [])
+    .filter((a) => a.word >= lead)
+    .map((a) => (lead > 0 ? { ...a, word: a.word - lead } : a));
   if (anchors.length === 0) {
     return [
       {
@@ -186,6 +193,12 @@ export function anchorSegments(
     });
   });
   return segments;
+}
+
+/** A span's pickup words ("" when it has none), for the hanging render. */
+export function leadText(span: LyricSpan | undefined): string {
+  if (!span?.lead) return "";
+  return lyricWords(span.text).slice(0, span.lead).join(" ");
 }
 
 /**
