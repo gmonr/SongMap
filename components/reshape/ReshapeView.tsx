@@ -40,6 +40,7 @@ import { LyricsSection } from "./LyricsSection";
 import { ModeToggle, type ReshapeMode } from "./ModeToggle";
 import { RowsSection } from "./RowsSection";
 import { SelectionBar } from "./SelectionBar";
+import { SyllableGaps } from "./SyllableGaps";
 
 /** What is currently picked up, across every section and mode. */
 export type { ReshapeSelection } from "@/lib/song/selection";
@@ -210,13 +211,18 @@ export function ReshapeView({
       : setWordBoundary(line, boundary, start + dir);
   };
 
-  // A selected word's current anchor, so ◀ ▶ can nudge it a beat at a time
-  // and the AnchorDots can highlight it.
+  // A selected word's (or syllable's — sel.char > 0) current anchor, so
+  // ◀ ▶ can nudge it a beat at a time and the AnchorDots can highlight it.
+  const selChar = sel?.kind === "word" ? (sel.char ?? 0) : 0;
+  const selSpan =
+    sel?.kind === "word"
+      ? selLines?.[sel.li]?.lyrics.find((s) => s.bar === sel.bar)
+      : undefined;
   const selAnchorBeat =
     sel?.kind === "word"
-      ? (selLines?.[sel.li]?.lyrics
-          .find((s) => s.bar === sel.bar)
-          ?.anchors?.find((a) => a.word === sel.word)?.beat ?? null)
+      ? (selSpan?.anchors?.find(
+          (a) => a.word === sel.word && (a.char ?? 0) === selChar
+        )?.beat ?? null)
       : null;
 
   const canMove = (dir: -1 | 1): boolean => {
@@ -232,8 +238,13 @@ export function ReshapeView({
     if (sel.kind === "word") {
       return (
         selAnchorBeat !== null &&
-        setWordAnchor(selLines[sel.li], sel.bar, sel.word, selAnchorBeat + dir) !==
-          selLines[sel.li]
+        setWordAnchor(
+          selLines[sel.li],
+          sel.bar,
+          sel.word,
+          selAnchorBeat + dir,
+          selChar
+        ) !== selLines[sel.li]
       );
     }
     return shiftLyric(selLines[sel.li], sel.bar, dir) !== selLines[sel.li];
@@ -244,7 +255,13 @@ export function ReshapeView({
     if (sel.kind === "word") {
       if (selAnchorBeat === null) return;
       applyToSection(sel.sectionId, (lines) => {
-        const next = setWordAnchor(lines[sel.li], sel.bar, sel.word, selAnchorBeat + dir);
+        const next = setWordAnchor(
+          lines[sel.li],
+          sel.bar,
+          sel.word,
+          selAnchorBeat + dir,
+          selChar
+        );
         return next === lines[sel.li]
           ? lines
           : lines.map((l, i) => (i === sel.li ? next : l));
@@ -294,7 +311,13 @@ export function ReshapeView({
           : sel.kind === "break"
             ? breakTitle(selLines[sel.li], sel.boundary)
             : sel.kind === "word"
-              ? lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] || "—"
+              ? (() => {
+                  const w =
+                    lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ??
+                    "";
+                  const c = sel.char ?? 0;
+                  return c > 0 ? `${w.slice(0, c)}·${w.slice(c)}` : w || "—";
+                })()
               : lyricFor(selLines[sel.li], sel.bar) || "—"
       : "";
 
@@ -382,12 +405,18 @@ export function ReshapeView({
     });
   };
 
-  // A selected word's beat dots: tap a beat to pin the word there, tap its
-  // current beat to un-pin.
+  // A selected word's beat dots: tap a beat to pin the word (or its
+  // selected syllable) there, tap its current beat to un-pin.
   const setAnchor = (beat: number | null) => {
     if (sel?.kind !== "word") return;
     applyToSection(sel.sectionId, (lines) => {
-      const next = setWordAnchor(lines[sel.li], sel.bar, sel.word, beat);
+      const next = setWordAnchor(
+        lines[sel.li],
+        sel.bar,
+        sel.word,
+        beat,
+        selChar
+      );
       return next === lines[sel.li]
         ? lines
         : lines.map((l, i) => (i === sel.li ? next : l));
@@ -461,13 +490,36 @@ export function ReshapeView({
       )
     ) : undefined;
 
+  const selWordText =
+    sel?.kind === "word" && selLines
+      ? (lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ?? "")
+      : "";
+
   const wordTools =
     sel?.kind === "word" && selLines?.[sel.li]?.bars[sel.bar] ? (
-      <AnchorDots
-        bar={selLines[sel.li].bars[sel.bar]}
-        anchorBeat={selAnchorBeat}
-        onSet={setAnchor}
-      />
+      <div className="flex min-w-0 flex-1 flex-col items-stretch">
+        {selWordText.length > 1 && (
+          <SyllableGaps
+            word={selWordText}
+            selChar={selChar}
+            anchoredChars={
+              new Set(
+                selSpan?.anchors
+                  ?.filter((a) => a.word === sel.word && (a.char ?? 0) > 0)
+                  .map((a) => a.char!) ?? []
+              )
+            }
+            onPick={(char) =>
+              setSel({ ...sel, char: char > 0 ? char : undefined })
+            }
+          />
+        )}
+        <AnchorDots
+          bar={selLines[sel.li].bars[sel.bar]}
+          anchorBeat={selAnchorBeat}
+          onSet={setAnchor}
+        />
+      </div>
     ) : undefined;
 
   const barTools =
@@ -666,7 +718,9 @@ export function ReshapeView({
                   ? "◀ ▶ move the break one word"
                   : sel.kind === "word"
                     ? selAnchorBeat === null
-                      ? "tap a beat dot to pin this word"
+                      ? selChar > 0
+                        ? "tap a beat dot to pin this syllable"
+                        : "tap a beat dot to pin this word · letter gaps pick a syllable"
                       : "◀ ▶ move the pin one beat"
                     : "◀ ▶ shift it one bar"
           }

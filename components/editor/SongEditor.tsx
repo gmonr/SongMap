@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SECTION_COLOR_NAMES, sectionColor } from "@/lib/song/colors";
-import { lyricWords } from "@/lib/song/lyrics";
+import { anchorsAfterRetype, lyricWords } from "@/lib/song/lyrics";
 import { KEYS, parseKey } from "@/lib/song/theory";
 import {
   beatsPerBar,
@@ -177,11 +177,9 @@ function SectionEditor({
       const span: LyricSpan = { text, bar: barIdx };
       // Word→beat anchors (set in reshape) survive edits that keep the word
       // count — fixing a typo keeps the alignment; rewriting drops it.
-      if (
-        old?.anchors &&
-        lyricWords(text).length === lyricWords(old.text).length
-      ) {
-        span.anchors = old.anchors;
+      const words = lyricWords(text);
+      if (old?.anchors && words.length === lyricWords(old.text).length) {
+        span.anchors = anchorsAfterRetype(old.anchors, words);
       }
       lyrics.push(span);
     }

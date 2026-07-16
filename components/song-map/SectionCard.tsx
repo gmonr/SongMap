@@ -133,6 +133,7 @@ export function SectionCard({
                     displayKey={displayKey}
                     notation={notation}
                     borderColor={color.barBorder}
+                    emphasisColor={color.label}
                     masked={isBarMasked?.(li, bi) ?? false}
                     onReveal={() => onRevealBar?.(li, bi)}
                     flash={

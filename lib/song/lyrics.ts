@@ -13,6 +13,23 @@
 import { fromDense, toDense } from "./lines";
 import type { Bar, Line, WordAnchor } from "./types";
 
+/**
+ * Anchors that survive retyping a phrase into `words` (same word count —
+ * callers enforce that): word-start anchors always do, syllable anchors
+ * only while their char offset still falls inside the (possibly shorter)
+ * new word. Undefined when none survive.
+ */
+export function anchorsAfterRetype(
+  anchors: WordAnchor[] | undefined,
+  words: string[]
+): WordAnchor[] | undefined {
+  if (!anchors) return undefined;
+  const kept = anchors.filter(
+    (a) => a.word < words.length && (a.char ?? 0) < words[a.word].length
+  );
+  return kept.length > 0 ? kept : undefined;
+}
+
 /** Anchors filtered to what a destination bar can hold (its beat range);
  *  undefined when none survive, so spans don't carry empty arrays. */
 function anchorsFor(
@@ -119,7 +136,9 @@ export function setBarLyric(line: Line, bar: number, text: string): Line {
   cells[bar] = {
     ...cells[bar],
     lyric: next,
-    anchors: sameWordCount ? cells[bar].anchors : undefined,
+    anchors: sameWordCount
+      ? anchorsAfterRetype(cells[bar].anchors, words)
+      : undefined,
   };
   return fromDense(cells);
 }

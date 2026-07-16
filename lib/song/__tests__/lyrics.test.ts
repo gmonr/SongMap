@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  anchorsAfterRetype,
   lineWordLayout,
   setBarLyric,
   setWordBoundary,
@@ -178,5 +179,26 @@ describe("word→beat anchors across lyric ops", () => {
     expect(next.lyrics).toEqual([
       { text: "hey now", bar: 1, anchors: [{ word: 1, beat: 2 }] },
     ]);
+  });
+});
+
+describe("anchorsAfterRetype", () => {
+  it("keeps word pins and in-range syllable pins, drops the rest", () => {
+    expect(
+      anchorsAfterRetype(
+        [
+          { word: 0, beat: 0 },
+          { word: 1, beat: 2, char: 4 },
+        ],
+        ["oh", "night"]
+      )
+    ).toEqual([
+      { word: 0, beat: 0 },
+      { word: 1, beat: 2, char: 4 },
+    ]);
+    // The retyped word got shorter than the syllable offset.
+    expect(
+      anchorsAfterRetype([{ word: 1, beat: 2, char: 4 }], ["oh", "hey"])
+    ).toBeUndefined();
   });
 });

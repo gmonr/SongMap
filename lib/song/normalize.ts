@@ -7,7 +7,7 @@
  * untouched songs stay reference-equal (the editors use that for dirty
  * tracking).
  */
-import { barTotalBeats, validAnchors } from "./anchors";
+import { anchorChar, barTotalBeats, validAnchors } from "./anchors";
 import { lyricWords } from "./lyrics";
 import type { Line, LyricSpan, SongData, WordAnchor } from "./types";
 
@@ -15,13 +15,15 @@ import type { Line, LyricSpan, SongData, WordAnchor } from "./types";
  *  wins on conflict); null when the result is "no anchors". */
 function normalizeAnchors(
   anchors: WordAnchor[],
-  wordCount: number,
+  words: string[],
   totalBeats: number
 ): WordAnchor[] | null {
-  const sorted = [...anchors].sort((a, b) => a.word - b.word);
+  const sorted = [...anchors].sort(
+    (a, b) => a.word - b.word || anchorChar(a) - anchorChar(b)
+  );
   const kept: WordAnchor[] = [];
   for (const a of sorted) {
-    if (validAnchors([...kept, a], wordCount, totalBeats)) kept.push(a);
+    if (validAnchors([...kept, a], words, totalBeats)) kept.push(a);
   }
   return kept.length > 0 ? kept : null;
 }
@@ -32,7 +34,7 @@ function normalizeSpan(span: LyricSpan, line: Line): LyricSpan {
   if (!bar) return span; // out-of-range spans are dropped by fromDense paths
   const next = normalizeAnchors(
     span.anchors,
-    lyricWords(span.text).length,
+    lyricWords(span.text),
     barTotalBeats(bar)
   );
   const unchanged =

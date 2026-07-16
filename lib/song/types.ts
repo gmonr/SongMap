@@ -33,6 +33,12 @@ export interface WordAnchor {
   word: number;
   /** 0-based beat within the bar, an integer < the bar's total beats. */
   beat: number;
+  /**
+   * Character offset within the word where the anchored syllable starts
+   * (0/absent = the word's start). Lets a beat land mid-word: "so·ñado"
+   * anchored at char 2 starts a new segment at "ñado".
+   */
+  char?: number;
 }
 
 /** A lyric phrase aligned to a bar (by index within its line). */

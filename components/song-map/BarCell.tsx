@@ -36,6 +36,7 @@ export function BarCell({
   displayKey,
   notation,
   borderColor,
+  emphasisColor = "text-slate-900",
   masked = false,
   onReveal,
   flash = false,
@@ -50,6 +51,8 @@ export function BarCell({
   displayKey: string;
   notation: Notation;
   borderColor: string;
+  /** Text color class for beat-anchored syllables (the section's accent). */
+  emphasisColor?: string;
   masked?: boolean;
   onReveal?: () => void;
   /** Landing back from reshape: scroll here and flash once. */
@@ -154,7 +157,16 @@ export function BarCell({
                 className="min-w-0"
                 style={{ flexGrow: seg.grow, flexBasis: 0 }}
               >
-                {seg.text}
+                {seg.emphLen > 0 ? (
+                  <>
+                    <b className={`font-bold ${emphasisColor}`}>
+                      {seg.text.slice(0, seg.emphLen)}
+                    </b>
+                    {seg.text.slice(seg.emphLen)}
+                  </>
+                ) : (
+                  seg.text
+                )}
               </span>
             ))}
           </div>

@@ -25,6 +25,8 @@ describe("barTotalBeats", () => {
 });
 
 describe("validAnchors", () => {
+  const words = ["oh", "what", "a"];
+
   it("accepts sorted, in-range, strictly increasing anchors", () => {
     expect(
       validAnchors(
@@ -32,24 +34,24 @@ describe("validAnchors", () => {
           { word: 0, beat: 0 },
           { word: 2, beat: 2 },
         ],
-        3,
+        words,
         4
       )
     ).toBe(true);
-    expect(validAnchors([], 0, 4)).toBe(true);
+    expect(validAnchors([], [], 4)).toBe(true);
   });
 
   it("rejects out-of-range, duplicate, or misordered anchors", () => {
-    expect(validAnchors([{ word: 3, beat: 0 }], 3, 4)).toBe(false);
-    expect(validAnchors([{ word: 0, beat: 4 }], 3, 4)).toBe(false);
-    expect(validAnchors([{ word: 0, beat: 1.5 }], 3, 4)).toBe(false);
+    expect(validAnchors([{ word: 3, beat: 0 }], words, 4)).toBe(false);
+    expect(validAnchors([{ word: 0, beat: 4 }], words, 4)).toBe(false);
+    expect(validAnchors([{ word: 0, beat: 1.5 }], words, 4)).toBe(false);
     expect(
       validAnchors(
         [
           { word: 0, beat: 2 },
           { word: 1, beat: 1 },
         ],
-        3,
+        words,
         4
       )
     ).toBe(false);
@@ -59,10 +61,36 @@ describe("validAnchors", () => {
           { word: 1, beat: 0 },
           { word: 1, beat: 2 },
         ],
-        3,
+        words,
         4
       )
     ).toBe(false);
+  });
+
+  it("orders same-word syllable anchors by char and bounds char by length", () => {
+    expect(
+      validAnchors(
+        [
+          { word: 1, beat: 0 },
+          { word: 1, beat: 2, char: 2 },
+        ],
+        words,
+        4
+      )
+    ).toBe(true);
+    expect(
+      validAnchors(
+        [
+          { word: 1, beat: 0, char: 2 },
+          { word: 1, beat: 2 },
+        ],
+        words,
+        4
+      )
+    ).toBe(false); // char 2 can't precede char 0
+    expect(validAnchors([{ word: 0, beat: 0, char: 2 }], words, 4)).toBe(
+      false
+    ); // "oh" has no char 2
   });
 });
 
@@ -111,10 +139,10 @@ describe("anchorSegments", () => {
   it("renders an unanchored phrase as one full-width segment", () => {
     const l = line([splitBar], { 0: "oh what a night" });
     expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
-      { text: "oh what a night", startBeat: 0, grow: 4, anchored: false },
+      { text: "oh what a night", startBeat: 0, grow: 4, anchored: false, emphLen: 0 },
     ]);
     expect(anchorSegments(splitBar, undefined)).toEqual([
-      { text: "", startBeat: 0, grow: 4, anchored: false },
+      { text: "", startBeat: 0, grow: 4, anchored: false, emphLen: 0 },
     ]);
   });
 
@@ -123,8 +151,8 @@ describe("anchorSegments", () => {
       0: { text: "oh what a night", anchors: [{ word: 2, beat: 2 }] },
     });
     expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
-      { text: "oh what", startBeat: 0, grow: 2, anchored: false },
-      { text: "a night", startBeat: 2, grow: 2, anchored: true },
+      { text: "oh what", startBeat: 0, grow: 2, anchored: false, emphLen: 0 },
+      { text: "a night", startBeat: 2, grow: 2, anchored: true, emphLen: 1 },
     ]);
   });
 
@@ -133,8 +161,8 @@ describe("anchorSegments", () => {
       0: { text: "night", anchors: [{ word: 0, beat: 3 }] },
     });
     expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
-      { text: "", startBeat: 0, grow: 3, anchored: false },
-      { text: "night", startBeat: 3, grow: 1, anchored: true },
+      { text: "", startBeat: 0, grow: 3, anchored: false, emphLen: 0 },
+      { text: "night", startBeat: 3, grow: 1, anchored: true, emphLen: 5 },
     ]);
   });
 
@@ -149,8 +177,8 @@ describe("anchorSegments", () => {
       },
     });
     expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
-      { text: "oh what", startBeat: 0, grow: 2, anchored: true },
-      { text: "a night", startBeat: 2, grow: 2, anchored: true },
+      { text: "oh what", startBeat: 0, grow: 2, anchored: true, emphLen: 2 },
+      { text: "a night", startBeat: 2, grow: 2, anchored: true, emphLen: 1 },
     ]);
   });
 });
@@ -213,5 +241,48 @@ describe("setBarBeatBoundary", () => {
     const next = setBarBeatBoundary(l, 0, 0, 1);
     expect(next.bars[0].chords.map((c) => c.beats)).toEqual([1, 3]);
     expect(next.lyrics).toBe(l.lyrics);
+  });
+});
+
+describe("syllable (char) anchors", () => {
+  it("setWordAnchor pins a syllable alongside the word's own anchor", () => {
+    const l = line([splitBar], { 0: "como te he soñado" });
+    const wordPin = setWordAnchor(l, 0, 3, 2);
+    const both = setWordAnchor(wordPin, 0, 3, 3, 2);
+    expect(both.lyrics[0].anchors).toEqual([
+      { word: 3, beat: 2 },
+      { word: 3, beat: 3, char: 2 },
+    ]);
+    // Clearing targets the exact (word, char) pin.
+    expect(setWordAnchor(both, 0, 3, null, 2).lyrics[0].anchors).toEqual([
+      { word: 3, beat: 2 },
+    ]);
+  });
+
+  it("anchorSegments cuts mid-word and emphasizes the syllable", () => {
+    const l = line([splitBar], {
+      0: { text: "como te he soñado", anchors: [{ word: 3, beat: 2, char: 2 }] },
+    });
+    expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
+      { text: "como te he so", startBeat: 0, grow: 2, anchored: false, emphLen: 0 },
+      { text: "ñado", startBeat: 2, grow: 2, anchored: true, emphLen: 4 },
+    ]);
+  });
+
+  it("two anchors inside one word emphasize up to the next cut", () => {
+    const word = "soñado";
+    const l = line([splitBar], {
+      0: {
+        text: word,
+        anchors: [
+          { word: 0, beat: 0 },
+          { word: 0, beat: 2, char: 2 },
+        ],
+      },
+    });
+    expect(anchorSegments(splitBar, l.lyrics[0])).toEqual([
+      { text: "so", startBeat: 0, grow: 2, anchored: true, emphLen: 2 },
+      { text: "ñado", startBeat: 2, grow: 2, anchored: true, emphLen: 4 },
+    ]);
   });
 });
