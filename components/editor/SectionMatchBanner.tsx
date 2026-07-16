@@ -11,9 +11,11 @@ import type { SongData } from "@/lib/song/types";
 /**
  * Detects duplicated sections and offers one-tap fixes: merge true
  * duplicates into one shared definition (edits then apply everywhere it
- * appears), or link same-chords sections so they render collapsed as
- * "chords same as …". Suggestions are dismissible per group; nothing is
- * ever applied without a tap.
+ * appears), or link same-chords sections so they share one chord
+ * progression — a chord edit in any linked member updates all of them
+ * (see syncLinkedChords) — and render collapsed as "chords same as …".
+ * Suggestions are dismissible per group; nothing is ever applied without
+ * a tap.
  */
 export function SectionMatchBanner({
   data,

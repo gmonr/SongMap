@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SECTION_COLOR_NAMES, sectionColor } from "@/lib/song/colors";
+import { syncLinkedChords } from "@/lib/song/fingerprint";
 import { anchorsAfterRetype, lyricWords } from "@/lib/song/lyrics";
 import { KEYS, parseKey } from "@/lib/song/theory";
 import {
@@ -316,8 +317,13 @@ export function SongEditor({ song }: { song: SongRow }) {
   const { minor } = parseKey(key);
   const sectionIds = Object.keys(data.sections);
 
+  // Linked (`sameChordsAs`) sections share chords: a chord edit here flows
+  // to the source and every other linked member; structural drift severs
+  // the link instead (see syncLinkedChords).
   const setSection = (id: string, def: SectionDef) =>
-    setData((d) => ({ ...d, sections: { ...d.sections, [id]: def } }));
+    setData((d) =>
+      syncLinkedChords({ ...d, sections: { ...d.sections, [id]: def } }, id)
+    );
 
   const addSection = () => {
     const id = uid("section");
@@ -352,16 +358,20 @@ export function SongEditor({ song }: { song: SongRow }) {
     });
   };
 
+  // Setting `sameChordsAs` here links live: once every instance of the
+  // section points at the same source, the source's chords stamp onto it.
   const setArrangement = (
     i: number,
     patch: Partial<SongData["arrangement"][number]>
   ) =>
-    setData((d) => ({
-      ...d,
-      arrangement: d.arrangement.map((a, j) =>
-        j === i ? { ...a, ...patch } : a
-      ),
-    }));
+    setData((d) =>
+      syncLinkedChords({
+        ...d,
+        arrangement: d.arrangement.map((a, j) =>
+          j === i ? { ...a, ...patch } : a
+        ),
+      })
+    );
 
   const moveArrangement = (i: number, dir: -1 | 1) =>
     setData((d) => {
@@ -511,7 +521,10 @@ export function SongEditor({ song }: { song: SongRow }) {
         </button>
       </div>
 
-      <SectionMatchBanner data={data} onApply={setData} />
+      <SectionMatchBanner
+        data={data}
+        onApply={(next) => setData(syncLinkedChords(next))}
+      />
 
       {/* Arrangement */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

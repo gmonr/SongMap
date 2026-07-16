@@ -5,10 +5,12 @@ import {
   detectSectionMatches,
   findMatchingBars,
   linkChords,
+  linkSourceOf,
   mergeSections,
   propagateBarChords,
   sectionChordFingerprint,
   sectionContentFingerprint,
+  syncLinkedChords,
 } from "../fingerprint";
 import type { SectionDef, SongData } from "../types";
 import { bar, line } from "./helpers";
@@ -168,6 +170,166 @@ describe("linkChords", () => {
     const linked = linkChords(data, ["v2"], "v1");
     expect(linkChords(linked, ["v2"], "v1")).toBe(linked);
     expect(linkChords(data, ["v1"], "v1")).toBe(data);
+  });
+});
+
+describe("syncLinkedChords", () => {
+  // v (source) and p (linked pre-chorus): same 4-bar chord sequence, but p
+  // has its own lyrics and a different row layout (2+2 instead of 4).
+  const makeData = (): SongData =>
+    song(
+      {
+        v: section("Verse", [
+          line([bar("Em"), bar("D"), bar("G"), bar("C")], {
+            0: "you call me",
+            2: { text: "tellin me", anchors: [{ word: 1, beat: 2 }] },
+          }),
+        ]),
+        p: section("Pre", [
+          line([bar("Em"), bar("D")], { 0: "otra letra" }),
+          line([bar("G"), bar("C")], {
+            0: { text: "mas palabras", anchors: [{ word: 1, beat: 1 }] },
+          }),
+        ]),
+      },
+      [
+        { ref: "v", instanceLabel: "Verse 1" },
+        { ref: "p", instanceLabel: "Pre-Chorus", sameChordsAs: "v" },
+        { ref: "p", instanceLabel: "Pre-Chorus 2", sameChordsAs: "v" },
+      ]
+    );
+
+  it("linkSourceOf needs every instance on the same source", () => {
+    const data = makeData();
+    expect(linkSourceOf(data, "p")).toBe("v");
+    expect(linkSourceOf(data, "v")).toBeUndefined();
+    const partial: SongData = {
+      ...data,
+      arrangement: [
+        data.arrangement[0],
+        data.arrangement[1],
+        { ref: "p", instanceLabel: "Pre-Chorus 2" },
+      ],
+    };
+    expect(linkSourceOf(partial, "p")).toBeUndefined();
+  });
+
+  it("no-ops by reference when already in sync", () => {
+    const data = makeData();
+    expect(syncLinkedChords(data)).toBe(data);
+    expect(syncLinkedChords(data, "v")).toBe(data);
+    expect(syncLinkedChords(data, "p")).toBe(data);
+  });
+
+  it("a source edit flows to the linked section, keeping its lyrics and rows", () => {
+    const data = makeData();
+    const edited: SongData = {
+      ...data,
+      sections: {
+        ...data.sections,
+        v: section("Verse", [
+          line([bar("Em"), bar("D"), bar("G", "G/B"), bar("C")], {
+            0: "you call me",
+            2: { text: "tellin me", anchors: [{ word: 1, beat: 2 }] },
+          }),
+        ]),
+      },
+    };
+    const out = syncLinkedChords(edited, "v");
+    expect(barFingerprint(out.sections.p.lines[1].bars[0])).toBe("G:2|G/B:2");
+    // Unchanged bars, lyrics, anchors, and row layout survive by reference.
+    expect(out.sections.p.lines[0]).toBe(edited.sections.p.lines[0]);
+    expect(out.sections.p.lines[1].lyrics).toBe(
+      edited.sections.p.lines[1].lyrics
+    );
+    expect(out.sections.p.lines.length).toBe(2);
+    // Fresh cell copies — the sections never share chord objects.
+    expect(out.sections.p.lines[1].bars[0].chords[0]).not.toBe(
+      edited.sections.v.lines[0].bars[2].chords[0]
+    );
+  });
+
+  it("an edit in the linked section pushes to the source and its siblings", () => {
+    const data: SongData = {
+      ...makeData(),
+      sections: {
+        ...makeData().sections,
+        q: section("Bridge", [
+          line([bar("Em"), bar("D"), bar("G"), bar("C")]),
+        ]),
+      },
+      arrangement: [
+        ...makeData().arrangement,
+        { ref: "q", instanceLabel: "Bridge", sameChordsAs: "v" },
+      ],
+    };
+    const edited: SongData = {
+      ...data,
+      sections: {
+        ...data.sections,
+        p: section("Pre", [
+          line([bar("Em7"), bar("D")], { 0: "otra letra" }),
+          data.sections.p.lines[1],
+        ]),
+      },
+    };
+    const out = syncLinkedChords(edited, "p");
+    expect(barFingerprint(out.sections.v.lines[0].bars[0])).toBe("Em7:4");
+    expect(barFingerprint(out.sections.q.lines[0].bars[0])).toBe("Em7:4");
+    // The edited section itself is left as the user typed it.
+    expect(out.sections.p).toBe(edited.sections.p);
+    expect(out.sections.v.lines[0].lyrics).toBe(data.sections.v.lines[0].lyrics);
+  });
+
+  it("severs the link when the bar counts no longer match", () => {
+    const data = makeData();
+    const edited: SongData = {
+      ...data,
+      sections: {
+        ...data.sections,
+        p: section("Pre", [
+          line([bar("Em"), bar("D")], { 0: "otra letra" }),
+          line([bar("G"), bar("C"), bar()]),
+        ]),
+      },
+    };
+    const out = syncLinkedChords(edited, "p");
+    expect(out.arrangement.map((a) => a.sameChordsAs)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(out.arrangement.every((a) => !("sameChordsAs" in a))).toBe(true);
+    // Nobody's chords were touched.
+    expect(out.sections).toBe(edited.sections);
+  });
+
+  it("follows link chains to the root and survives cycles", () => {
+    const chained: SongData = {
+      sections: {
+        a: section("A", [line([bar("C")])]),
+        b: section("B", [line([bar("Am")])]),
+        c: section("C", [line([bar("F")])]),
+      },
+      arrangement: [
+        { ref: "a", instanceLabel: "A" },
+        { ref: "b", instanceLabel: "B", sameChordsAs: "a" },
+        { ref: "c", instanceLabel: "C", sameChordsAs: "b" },
+      ],
+    };
+    const out = syncLinkedChords(chained);
+    expect(barFingerprint(out.sections.b.lines[0].bars[0])).toBe("C:4");
+    expect(barFingerprint(out.sections.c.lines[0].bars[0])).toBe("C:4");
+
+    const cyclic: SongData = {
+      ...chained,
+      arrangement: [
+        { ref: "a", instanceLabel: "A", sameChordsAs: "c" },
+        { ref: "b", instanceLabel: "B", sameChordsAs: "a" },
+        { ref: "c", instanceLabel: "C", sameChordsAs: "b" },
+      ],
+    };
+    expect(syncLinkedChords(cyclic)).toBe(cyclic);
   });
 });
 

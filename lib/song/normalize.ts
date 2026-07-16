@@ -8,6 +8,7 @@
  * tracking).
  */
 import { anchorChar, barTotalBeats, validAnchors } from "./anchors";
+import { syncLinkedChords } from "./fingerprint";
 import { lyricWords } from "./lyrics";
 import type { Line, LyricSpan, SongData, WordAnchor } from "./types";
 
@@ -75,8 +76,12 @@ function normalizeLine(line: Line): Line {
 }
 
 /** Clean a song's data blob on load; same reference when already clean. */
-export function normalizeSongData(data: SongData): SongData {
-  let changed = false;
+export function normalizeSongData(input: SongData): SongData {
+  // Linked (`sameChordsAs`) sections share one chord progression — re-sync
+  // first (songs saved before linking shared data may have drifted), so the
+  // anchor cleanup below validates against the bars that will render.
+  const data = syncLinkedChords(input);
+  let changed = data !== input;
   const sections: SongData["sections"] = {};
   for (const [id, def] of Object.entries(data.sections)) {
     let linesChanged = false;

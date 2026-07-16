@@ -193,6 +193,14 @@ closed in one pass:
   duplicates, and **Link chords** (`same as …`, rendered collapsed) for
   same-chords-different-lyrics sections like verses. Suggestions are
   dismissible; nothing applies without a tap.
+- **Linked sections share chord data** — `sameChordsAs` is a live link,
+  not just a display note: a chord edit in any linked member (reshape or
+  editor) flows to the source section and every other member, while each
+  section keeps its own lyrics, word anchors, and row layout
+  (`syncLinkedChords` in `lib/song/fingerprint.ts`, also run at load to
+  heal songs saved before links shared data). Adding or deleting bars on
+  either side makes "chords same as" untrue, so that severs the link
+  instead of guessing.
 - **Edit-time propagation** — fix a bar once, fix it everywhere. After a
   bar-local chord edit in reshape (rename, beat split, insert, delete), if
   other bars still match what the edited bar looked like *before*, a
