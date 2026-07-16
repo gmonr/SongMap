@@ -122,6 +122,40 @@ Nashville-number display.
   all applied mid-flight without restarting. Audio follows the current
   transpose: shift the display key and the chords sound in that key.
 
+## Features (Phase 6)
+
+- **Ultimate Guitar search** — a search box on the import page (above the
+  paste box) searches Ultimate Guitar by song title or artist and lists
+  chord-sheet results (Chords type only, best-rated first, with rating and
+  vote counts). Picking one fetches the tab and drops its text into the
+  import textarea — title, artist, key, and capo prefill, and the source
+  URL is stored on the saved song — so the live preview, hand-editing, and
+  save pipeline are exactly the paste flow. Manual paste stays available as
+  the fallback whenever UG is unreachable or changes format.
+- **Blocked-server resilience** — UG bot-blocks many hosting providers' IP
+  ranges, so fetching is an attempt chain: a direct request with
+  browser-like headers first, then a few free public fetch relays, or your
+  own scraping API if `UG_PROXY_TEMPLATE` is set (see Setup). A response
+  only counts as success if it actually carries UG's data payload (relays
+  love to answer 200 with their own error page), and each failed attempt is
+  named in the error message ("jina.ai: the request timed out; …") so
+  problems are diagnosable from the UI. Fetches run server-side behind a
+  UG-host allowlist, so the server action can't be used as a generic proxy.
+  `[ch]`/`[tab]` markup and HTML entities (`Man&aacute;` → `Maná`) are
+  cleaned out of the fetched text.
+- **Import fixes for real-world sheets** — Spanish section headers
+  (`[I Estrofa]`, `[Coro 2]` — numbered on either side) are recognized as
+  section starts and colored like their English counterparts, instead of
+  the whole song collapsing into one section; prose comments are still
+  skipped. And a chord sitting above the space between two words no longer
+  glues them together (`te he soñado` → `te hesoñado`): the parser keeps
+  the word boundary, so only genuinely mid-word splits (`de|seo`) are
+  rejoined.
+- **Tests** — the UG page-parsing helpers and the fetched-page →
+  `importChordSheet` pipeline are covered fixture-driven in
+  `lib/ug/__tests__/`; the section-header and word-boundary fixes in
+  `lib/song/__tests__/import.test.ts`.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats
