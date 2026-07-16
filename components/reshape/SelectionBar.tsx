@@ -27,6 +27,7 @@ export function SelectionBar({
   onClear,
   tools,
   edit,
+  notice,
 }: {
   /** What is picked up, e.g. the chord symbol or the lyric phrase. */
   title: string;
@@ -52,6 +53,9 @@ export function SelectionBar({
     /** Permit committing "" (lyrics: clears the phrase); default no-op. */
     allowEmpty?: boolean;
   };
+  /** Optional banner row docked on top of the bar (e.g. a propagation
+   *  offer), so it stays in thumb reach next to the actions it follows. */
+  notice?: ReactNode;
 }) {
   /** The in-progress edit text; null when not editing. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -59,6 +63,7 @@ export function SelectionBar({
     "flex h-11 w-14 items-center justify-center rounded-lg bg-blue-50 text-lg font-bold text-blue-600 hover:bg-blue-100 active:bg-blue-200 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-300";
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
+      {notice}
       {edit && draft !== null ? (
         <form
           onSubmit={(e) => {

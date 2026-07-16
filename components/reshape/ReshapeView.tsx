@@ -13,6 +13,14 @@ import {
   renameChord,
 } from "@/lib/song/chords";
 import { sectionColor } from "@/lib/song/colors";
+import {
+  barFingerprint,
+  barHasChord,
+  findMatchingBars,
+  propagateBarChords,
+  sameBarLocation,
+  type BarLocation,
+} from "@/lib/song/fingerprint";
 import { deleteBar, insertBar } from "@/lib/song/lines";
 import {
   lineWordLayout,
@@ -35,6 +43,7 @@ import type { Line, SongData, SongRow } from "@/lib/song/types";
 import { createClient } from "@/lib/supabase/client";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
 import { AnchorDots } from "./AnchorDots";
+import { PropagateBanner } from "./PropagateBanner";
 import { lyricFor } from "./BarChip";
 import { BeatDots } from "./BeatDots";
 import { ChordsSection } from "./ChordsSection";
@@ -89,7 +98,8 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       tapping a gap in the{" "}
       <b className="font-semibold text-slate-600">beat dots</b> moves the beat
       split. Empty <b className="font-semibold text-slate-600">—</b> bars are
-      tappable to give them a chord.
+      tappable to give them a chord. After a fix, a banner offers to apply it
+      to every bar that still looks like the old one.
     </>
   ),
 };
@@ -118,6 +128,13 @@ export function ReshapeView({
   const [history, setHistory] = useState<SongData[]>([]);
   const [mode, setModeState] = useState<ReshapeMode>(initialMode);
   const [sel, setSel] = useState<ReshapeSelection | null>(null);
+  // A pending "apply this fix elsewhere" offer (2B): the bar just edited
+  // and what it fingerprinted as *before* the edit, so bars that still
+  // match the old pattern can take the new chords in one tap.
+  const [offer, setOffer] = useState<{
+    source: BarLocation;
+    beforeFp: string;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = data !== song.data;
@@ -175,17 +192,50 @@ export function ReshapeView({
 
   // Ops signal a no-op by returning the same lines reference; skip the state
   // update (and the undo snapshot) entirely so stray taps don't set `dirty`.
-  const applyToSection = (id: string, fn: (lines: Line[]) => Line[]) => {
-    const next = fn(data.sections[id].lines);
-    if (next === data.sections[id].lines) return;
+  // Bar-local chord edits pass `editedBar` to feed the propagation offer
+  // (2B); every other edit clears any pending offer, since row/bar
+  // restructuring could shift the indices it points at.
+  const applyToSection = (
+    id: string,
+    fn: (lines: Line[]) => Line[],
+    editedBar?: { li: number; bi: number }
+  ) => {
+    const prev = data.sections[id].lines;
+    const next = fn(prev);
+    if (next === prev) return;
     setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
-    setData({
+    const nextData: SongData = {
       ...data,
       sections: {
         ...data.sections,
         [id]: { ...data.sections[id], lines: next },
       },
-    });
+    };
+    setData(nextData);
+
+    if (!editedBar) {
+      setOffer(null);
+      return;
+    }
+    // Repeated tweaks to the same bar keep comparing against how it looked
+    // before the FIRST edit — the untouched siblings still match that.
+    const loc: BarLocation = { sectionId: id, ...editedBar };
+    const before = prev[editedBar.li]?.bars[editedBar.bi];
+    const beforeFp =
+      offer && sameBarLocation(offer.source, loc)
+        ? offer.beforeFp
+        : before && barHasChord(before)
+          ? barFingerprint(before)
+          : null;
+    const after = next[editedBar.li]?.bars[editedBar.bi];
+    setOffer(
+      beforeFp !== null &&
+        after &&
+        barFingerprint(after) !== beforeFp &&
+        findMatchingBars(nextData, beforeFp, loc).length > 0
+        ? { source: loc, beforeFp }
+        : null
+    );
   };
 
   // Whole-song edits (section merges/links) — same undo history; the
@@ -194,14 +244,38 @@ export function ReshapeView({
     if (next === data) return;
     setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
     setSel(null);
+    setOffer(null);
     setData(next);
   };
 
   const undo = () => {
     if (history.length === 0) return;
     setSel(null);
+    setOffer(null);
     setData(history[history.length - 1]);
     setHistory(history.slice(0, -1));
+  };
+
+  // The offer's live target list (bars can drift back into/out of matching
+  // as the user keeps editing) and what applying would stamp onto them.
+  const offerTargets = offer
+    ? findMatchingBars(data, offer.beforeFp, offer.source)
+    : [];
+  const offerBar = offer
+    ? data.sections[offer.source.sectionId]?.lines[offer.source.li]?.bars[
+        offer.source.bi
+      ]
+    : undefined;
+
+  // Applying keeps the selection (unlike applyData): nothing the selection
+  // points at moves — only sibling bars change their chords.
+  const applyOffer = () => {
+    if (!offer) return;
+    const next = propagateBarChords(data, offer.source, offerTargets);
+    setOffer(null);
+    if (next === data) return;
+    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    setData(next);
   };
 
   // The selection's move targets, so the SelectionBar can disable dead
@@ -350,16 +424,20 @@ export function ReshapeView({
   const insertSel = (side: 0 | 1) => {
     if (sel?.kind !== "chord" || !insertSym) return;
     const at = selIsEmptyBar ? 0 : sel.ci + side;
-    applyToSection(sel.sectionId, (lines) =>
-      insertChord(lines, sel.li, sel.bi, at, insertSym, beats)
+    applyToSection(
+      sel.sectionId,
+      (lines) => insertChord(lines, sel.li, sel.bi, at, insertSym, beats),
+      { li: sel.li, bi: sel.bi }
     );
     setSel({ ...sel, ci: at });
   };
 
   const deleteSel = () => {
     if (sel?.kind !== "chord") return;
-    applyToSection(sel.sectionId, (lines) =>
-      deleteChord(lines, sel.li, sel.bi, sel.ci)
+    applyToSection(
+      sel.sectionId,
+      (lines) => deleteChord(lines, sel.li, sel.bi, sel.ci),
+      { li: sel.li, bi: sel.bi }
     );
     setSel(null);
   };
@@ -371,8 +449,10 @@ export function ReshapeView({
   const editSel = (text: string) => {
     if (!sel) return;
     if (sel.kind === "chord") {
-      applyToSection(sel.sectionId, (lines) =>
-        renameChord(lines, sel.li, sel.bi, sel.ci, text)
+      applyToSection(
+        sel.sectionId,
+        (lines) => renameChord(lines, sel.li, sel.bi, sel.ci, text),
+        { li: sel.li, bi: sel.bi }
       );
     } else if (sel.kind === "phrase") {
       applyToSection(sel.sectionId, (lines) => {
@@ -409,14 +489,18 @@ export function ReshapeView({
   // the "lyrics follow the resized chord" behavior (see setBarBeatBoundary).
   const setBoundary = (ci: number, chordBeats: number) => {
     if (sel?.kind !== "chord") return;
-    applyToSection(sel.sectionId, (lines) => {
-      const line = lines[sel.li];
-      if (!line) return lines;
-      const next = setBarBeatBoundary(line, sel.bi, ci, chordBeats);
-      return next === line
-        ? lines
-        : lines.map((l, i) => (i === sel.li ? next : l));
-    });
+    applyToSection(
+      sel.sectionId,
+      (lines) => {
+        const line = lines[sel.li];
+        if (!line) return lines;
+        const next = setBarBeatBoundary(line, sel.bi, ci, chordBeats);
+        return next === line
+          ? lines
+          : lines.map((l, i) => (i === sel.li ? next : l));
+      },
+      { li: sel.li, bi: sel.bi }
+    );
   };
 
   // A selected word's beat dots: tap a beat to pin the word (or its
@@ -612,6 +696,18 @@ export function ReshapeView({
     ? `${songHref}?focus=${encodeURIComponent(encodeFocus(focusAnchor))}`
     : songHref;
 
+  const offerBanner =
+    offer && offerBar && offerTargets.length > 0 ? (
+      <PropagateBanner
+        count={offerTargets.length}
+        chords={
+          offerBar.chords.map((c) => c.sym).filter(Boolean).join(" ") || "—"
+        }
+        onApply={applyOffer}
+        onDismiss={() => setOffer(null)}
+      />
+    ) : null;
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -634,9 +730,15 @@ export function ReshapeView({
       className={`reshape-surface select-none space-y-4 ${
         sel
           ? sel.kind === "chord" || sel.kind === "bar" || sel.kind === "word"
-            ? "pb-36"
-            : "pb-24"
-          : ""
+            ? offerBanner
+              ? "pb-44"
+              : "pb-36"
+            : offerBanner
+              ? "pb-32"
+              : "pb-24"
+          : offerBanner
+            ? "pb-14"
+            : ""
       }`}
     >
       {/* Two tight rows even on phones: title + back link, then the mode
@@ -744,8 +846,17 @@ export function ReshapeView({
         );
       })}
 
+      {!sel && offerBanner && (
+        // No selection to dock onto (e.g. a delete dropped it) — the offer
+        // still renders in the SelectionBar's fixed slot.
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
+          {offerBanner}
+        </div>
+      )}
+
       {sel && (
         <SelectionBar
+          notice={offerBanner ?? undefined}
           // Keyed by selection identity so a mid-edit tap on another chip
           // resets the SelectionBar's draft instead of carrying it over.
           key={

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   barFingerprint,
+  barHasChord,
   detectSectionMatches,
+  findMatchingBars,
   linkChords,
   mergeSections,
+  propagateBarChords,
   sectionChordFingerprint,
   sectionContentFingerprint,
 } from "../fingerprint";
@@ -165,5 +168,109 @@ describe("linkChords", () => {
     const linked = linkChords(data, ["v2"], "v1");
     expect(linkChords(linked, ["v2"], "v1")).toBe(linked);
     expect(linkChords(data, ["v1"], "v1")).toBe(data);
+  });
+});
+
+describe("bar propagation", () => {
+  // v: [G][C] / [G][D] — "G:4" appears twice in v (plus once in c).
+  const makeData = (): SongData =>
+    song(
+      {
+        v: section("Estrofa", [
+          line([bar("G"), bar("C")], { 0: "una", 1: "letra" }),
+          line([bar("G"), bar("D")], {
+            0: { text: "dos palabras", anchors: [{ word: 1, beat: 2 }] },
+          }),
+        ]),
+        c: section("Coro", [line([bar("Am"), bar("G")])]),
+      },
+      [
+        { ref: "v", instanceLabel: "Estrofa" },
+        { ref: "c", instanceLabel: "Coro" },
+      ]
+    );
+
+  it("barHasChord is false only for placeholder bars", () => {
+    expect(barHasChord(bar("G"))).toBe(true);
+    expect(barHasChord(bar("", "C"))).toBe(true);
+    expect(barHasChord(bar())).toBe(false);
+    expect(barHasChord({ chords: [{ sym: "  ", beats: 4 }] })).toBe(false);
+  });
+
+  it("findMatchingBars scans every section, excluding the edited bar", () => {
+    const data = makeData();
+    expect(findMatchingBars(data, "G:4")).toEqual([
+      { sectionId: "v", li: 0, bi: 0 },
+      { sectionId: "v", li: 1, bi: 0 },
+      { sectionId: "c", li: 0, bi: 1 },
+    ]);
+    expect(
+      findMatchingBars(data, "G:4", { sectionId: "v", li: 0, bi: 0 })
+    ).toEqual([
+      { sectionId: "v", li: 1, bi: 0 },
+      { sectionId: "c", li: 0, bi: 1 },
+    ]);
+    expect(findMatchingBars(data, "F#m:4")).toEqual([]);
+  });
+
+  it("propagates the source bar's chords, leaving lyrics and anchors alone", () => {
+    const data = makeData();
+    // The user re-split v[0][0] into G:2|G/B:2; stamp the two other "G:4"s.
+    const edited: SongData = {
+      ...data,
+      sections: {
+        ...data.sections,
+        v: {
+          ...data.sections.v,
+          lines: [
+            line(
+              [{ chords: [{ sym: "G", beats: 2 }, { sym: "G/B", beats: 2 }] }, bar("C")],
+              { 0: "una", 1: "letra" }
+            ),
+            data.sections.v.lines[1],
+          ],
+        },
+      },
+    };
+    const source = { sectionId: "v", li: 0, bi: 0 };
+    const out = propagateBarChords(
+      edited,
+      source,
+      findMatchingBars(edited, "G:4", source)
+    );
+
+    expect(barFingerprint(out.sections.v.lines[1].bars[0])).toBe("G:2|G/B:2");
+    expect(barFingerprint(out.sections.c.lines[0].bars[1])).toBe("G:2|G/B:2");
+    // Untouched bars and every lyric span (anchors included) survive as-is.
+    expect(out.sections.v.lines[0]).toBe(edited.sections.v.lines[0]);
+    expect(out.sections.c.lines[0].bars[0]).toBe(
+      edited.sections.c.lines[0].bars[0]
+    );
+    expect(out.sections.v.lines[1].lyrics).toBe(
+      edited.sections.v.lines[1].lyrics
+    );
+    // Fresh cell copies: mutating a stamped bar can't reach the source.
+    expect(out.sections.v.lines[1].bars[0].chords[0]).not.toBe(
+      edited.sections.v.lines[0].bars[0].chords[0]
+    );
+  });
+
+  it("no-ops by reference on empty/self/already-matching/missing targets", () => {
+    const data = makeData();
+    const source = { sectionId: "v", li: 0, bi: 0 };
+    expect(propagateBarChords(data, source, [])).toBe(data);
+    expect(propagateBarChords(data, source, [source])).toBe(data);
+    // Targets that already fingerprint like the source are skipped.
+    expect(
+      propagateBarChords(data, source, [{ sectionId: "c", li: 0, bi: 1 }])
+    ).toBe(data);
+    expect(
+      propagateBarChords(data, source, [{ sectionId: "x", li: 0, bi: 0 }])
+    ).toBe(data);
+    expect(
+      propagateBarChords(data, { sectionId: "x", li: 0, bi: 0 }, [
+        { sectionId: "v", li: 1, bi: 0 },
+      ])
+    ).toBe(data);
   });
 });
