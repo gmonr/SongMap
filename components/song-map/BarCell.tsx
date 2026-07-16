@@ -151,7 +151,11 @@ export function BarCell({
           // Anchored lyric: segments mirror the chord row's beat-weighted
           // flex layout, so each anchored word starts where its beat does.
           // Pickup words hang left of the bar, like a real chart's anacrusis.
-          <div className="relative mt-1 flex min-h-4 px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
+          // Segments keep their min-content width (a segment with few beats —
+          // or zero, e.g. words before a beat-0 anchor — must not collapse
+          // and paint over its neighbor), so a tight bar wraps to more lines
+          // and beat alignment degrades to best-effort.
+          <div className="relative mt-1 flex min-h-4 flex-wrap px-0.5 text-[11px] leading-tight text-slate-600 sm:text-xs">
             {!!span.lead && (
               <span className="absolute right-full top-0 max-w-24 truncate pr-1 italic text-slate-400">
                 {leadText(span)}
@@ -160,7 +164,6 @@ export function BarCell({
             {anchorSegments(bar, span).map((seg, i) => (
               <span
                 key={i}
-                className="min-w-0"
                 style={{ flexGrow: seg.grow, flexBasis: 0 }}
               >
                 {seg.emphLen > 0 ? (
