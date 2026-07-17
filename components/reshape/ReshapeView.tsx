@@ -327,16 +327,33 @@ export function ReshapeView({
       : setWordBoundary(line, boundary, start + dir);
   };
 
-  // A row-start seam (boundary 0) crosses lines and sections, so its move
-  // is a whole-song edit — same undo history, selection stands (the seam's
-  // identity is its right side, which doesn't move).
-  const moveSeam = (sectionId: string, li: number, dir: -1 | 1) => {
-    const next = moveSeamWord(data, orderedIds, sectionId, li, dir);
+  // A row-start seam (boundary 0) crosses lines and sections, so its moves
+  // are whole-song edits — same undo history, selection stands (the seam's
+  // identity is its right side, which doesn't move). A gap tap is `count`
+  // single-word moves folded into one undo step.
+  const moveSeamBy = (
+    sectionId: string,
+    li: number,
+    dir: -1 | 1,
+    count: number
+  ) => {
+    let next = data;
+    for (let i = 0; i < count; i++) {
+      next = moveSeamWord(next, orderedIds, sectionId, li, dir);
+    }
     if (next === data) return;
     setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
     setOffer(null);
     setData(next);
   };
+
+  // The selected seam's left-side bar, so its word gaps can light up as
+  // placement targets — it renders in the previous row, possibly inside
+  // another section's component.
+  const seamSel = sel?.kind === "break" && sel.boundary === 0 ? sel : null;
+  const seamLeft = seamSel
+    ? barBeforeSeam(data, orderedIds, seamSel.sectionId, seamSel.li)
+    : null;
 
   // The selected word's phrase span and highlight state, for the
   // SelectionBar's WYSIWYG picker.
@@ -386,7 +403,7 @@ export function ReshapeView({
       setSel({ ...sel, ...target });
     } else if (sel.kind === "break") {
       if (sel.boundary === 0) {
-        moveSeam(sel.sectionId, sel.li, dir);
+        moveSeamBy(sel.sectionId, sel.li, dir, 1);
         return; // Seam identity (section, row) unchanged — selection stands.
       }
       const next = movedBreak(selLines[sel.li], sel.boundary, dir);
@@ -843,6 +860,13 @@ export function ReshapeView({
                   sel={sel}
                   onSelect={setSel}
                   hasPrecedingBars={hasPrecedingBars}
+                  seamLeftAt={seamLeft?.sectionId === id ? seamLeft : null}
+                  onSeamGap={
+                    seamSel
+                      ? (dir, count) =>
+                          moveSeamBy(seamSel.sectionId, seamSel.li, dir, count)
+                      : undefined
+                  }
                 />
               )}
               {mode === "chords" && (
@@ -892,7 +916,7 @@ export function ReshapeView({
                 ? "＋ add empty bar · 🗑 delete"
                 : sel.kind === "break"
                   ? sel.boundary === 0
-                    ? "◀ ▶ move a word across the row (or section) boundary"
+                    ? "◀ ▶ move words across the row boundary · gaps place it"
                     : "◀ ▶ move the break one word"
                   : sel.kind === "word"
                     ? "tap letters to highlight · gaps split off syllables"
