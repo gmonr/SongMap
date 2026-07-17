@@ -24,13 +24,15 @@ import {
 } from "@/lib/song/fingerprint";
 import { deleteBar, insertBar } from "@/lib/song/lines";
 import {
+  barBeforeSeam,
   lineWordLayout,
   lyricWords,
+  moveSeamWord,
   setBarLyric,
   setWordBoundary,
   shiftLyric,
 } from "@/lib/song/lyrics";
-import { markChar, toggleWordMark } from "@/lib/song/marks";
+import { toggleWordRange, wordIntervals } from "@/lib/song/marks";
 import {
   encodeFocus,
   mapSelection,
@@ -76,14 +78,18 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       two bars to pick it up, then ◀ ▶ in the bottom bar move it one word at a
       time — or tap one of the{" "}
       <b className="font-semibold text-slate-600">word gaps</b> that light up
-      to place it there. Tap a bar&apos;s{" "}
+      to place it there. The dashed{" "}
+      <b className="font-semibold text-slate-600">seam</b> at the start of a
+      row works the same but moves words{" "}
+      <b className="font-semibold text-slate-600">across rows and sections</b>{" "}
+      — lyrics are one continuous string. Tap a bar&apos;s{" "}
       <b className="font-semibold text-slate-600">chord label</b> to pick up
       its whole phrase (◀ ▶ shifts it a bar,{" "}
       <b className="font-semibold text-slate-600">✎</b> retypes it). Tap a{" "}
       <b className="font-semibold text-slate-600">word</b> to highlight it on
-      the song map (letter gaps narrow it to a syllable) — highlights are
-      your own landmarks for where the words meet the chords. To move words
-      between rows, merge the rows in Rows mode first.
+      the song map: in the bottom bar, tap letter gaps to split off a
+      syllable and tap the letters to toggle their highlight — shown exactly
+      as the song map will render it.
     </>
   ),
   chords: (
@@ -252,6 +258,24 @@ export function ReshapeView({
     setData(syncLinkedChords(next));
   };
 
+  // Delete a whole section: its definition, every arrangement instance, and
+  // any links pointing at it. This is how imported junk (metadata parsed as
+  // an "Intro" full of non-chords) leaves the song — undoable like any edit.
+  const deleteSection = (id: string) => {
+    const label = data.sections[id]?.label ?? "section";
+    if (!confirm(`Delete ${label} — its bars and lyrics?`)) return;
+    const sections = { ...data.sections };
+    delete sections[id];
+    applyData({
+      sections,
+      arrangement: data.arrangement
+        .filter((a) => a.ref !== id)
+        .map((a) =>
+          a.sameChordsAs === id ? { ...a, sameChordsAs: undefined } : a
+        ),
+    });
+  };
+
   const undo = () => {
     if (history.length === 0) return;
     setSel(null);
@@ -303,18 +327,35 @@ export function ReshapeView({
       : setWordBoundary(line, boundary, start + dir);
   };
 
-  // A selected word (or its syllable — sel.char > 0) and whether that exact
-  // position is currently highlighted, for the toggle in the SelectionBar.
-  const selChar = sel?.kind === "word" ? (sel.char ?? 0) : 0;
+  // A row-start seam (boundary 0) crosses lines and sections, so its move
+  // is a whole-song edit — same undo history, selection stands (the seam's
+  // identity is its right side, which doesn't move).
+  const moveSeam = (sectionId: string, li: number, dir: -1 | 1) => {
+    const next = moveSeamWord(data, orderedIds, sectionId, li, dir);
+    if (next === data) return;
+    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    setOffer(null);
+    setData(next);
+  };
+
+  // The selected word's phrase span and highlight state, for the
+  // SelectionBar's WYSIWYG picker.
   const selSpan =
     sel?.kind === "word"
       ? selLines?.[sel.li]?.lyrics.find((s) => s.bar === sel.bar)
       : undefined;
+  const selWordText =
+    sel?.kind === "word" && selLines
+      ? (lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ?? "")
+      : "";
+  const selIntervals =
+    sel?.kind === "word"
+      ? wordIntervals(selSpan?.marks, sel.word, selWordText.length)
+      : [];
   const selMarked =
-    sel?.kind === "word" &&
-    !!selSpan?.marks?.some(
-      (m) => m.word === sel.word && markChar(m) === selChar
-    );
+    selIntervals.length === 1 &&
+    selIntervals[0][0] === 0 &&
+    selIntervals[0][1] === selWordText.length;
 
   const canMove = (dir: -1 | 1): boolean => {
     if (!sel || !selLines || sel.kind === "bar" || sel.kind === "word") {
@@ -326,6 +367,9 @@ export function ReshapeView({
       );
     }
     if (sel.kind === "break") {
+      if (sel.boundary === 0) {
+        return moveSeamWord(data, orderedIds, sel.sectionId, sel.li, dir) !== data;
+      }
       return movedBreak(selLines[sel.li], sel.boundary, dir) !== selLines[sel.li];
     }
     return shiftLyric(selLines[sel.li], sel.bar, dir) !== selLines[sel.li];
@@ -341,6 +385,10 @@ export function ReshapeView({
       );
       setSel({ ...sel, ...target });
     } else if (sel.kind === "break") {
+      if (sel.boundary === 0) {
+        moveSeam(sel.sectionId, sel.li, dir);
+        return; // Seam identity (section, row) unchanged — selection stands.
+      }
       const next = movedBreak(selLines[sel.li], sel.boundary, dir);
       if (next === selLines[sel.li]) return;
       applyToSection(sel.sectionId, (lines) =>
@@ -357,13 +405,27 @@ export function ReshapeView({
     }
   };
 
-  // "last-word │ first-word" around a selected break, "·" for an empty side.
-  const breakTitle = (line: Line, boundary: number): string => {
-    const layout = lineWordLayout(line);
-    const left = layout.bars[boundary - 1];
-    const right = layout.bars[boundary];
-    return `${left?.words[left.words.length - 1] ?? "·"} │ ${
-      right?.words[0] ?? "·"
+  // "last-word │ first-word" around a selected break, "·" for an empty
+  // side. A row-start seam reads its left side from the previous row or
+  // section.
+  const breakTitle = (sectionId: string, li: number, boundary: number): string => {
+    const line = data.sections[sectionId]?.lines[li];
+    if (!line) return "";
+    let leftWords: string[];
+    if (boundary === 0) {
+      const left = barBeforeSeam(data, orderedIds, sectionId, li);
+      leftWords = left
+        ? lyricWords(
+            lyricFor(data.sections[left.sectionId].lines[left.li], left.bi)
+          )
+        : [];
+    } else {
+      leftWords = lineWordLayout(line).bars[boundary - 1]?.words ?? [];
+    }
+    const rightWords =
+      lineWordLayout(line).bars[boundary]?.words ?? [];
+    return `${leftWords[leftWords.length - 1] ?? "·"} │ ${
+      rightWords[0] ?? "·"
     }`;
   };
 
@@ -374,15 +436,9 @@ export function ReshapeView({
         : sel.kind === "bar"
           ? selBar?.chords.map((c) => c.sym).filter(Boolean).join(" ") || "—"
           : sel.kind === "break"
-            ? breakTitle(selLines[sel.li], sel.boundary)
+            ? breakTitle(sel.sectionId, sel.li, sel.boundary)
             : sel.kind === "word"
-              ? (() => {
-                  const w =
-                    lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ??
-                    "";
-                  const c = sel.char ?? 0;
-                  return c > 0 ? `${w.slice(0, c)}·${w.slice(c)}` : w || "—";
-                })()
+              ? selWordText || "—"
               : lyricFor(selLines[sel.li], sel.bar) || "—"
       : "";
 
@@ -482,11 +538,12 @@ export function ReshapeView({
     );
   };
 
-  // Toggle the highlight on the selected word (or its selected syllable).
-  const toggleMark = () => {
+  // Toggle the highlight on chars [from, to) of the selected word — the
+  // WYSIWYG picker's segment taps, and (over the full range) the ☆ button.
+  const toggleRange = (from: number, to: number) => {
     if (sel?.kind !== "word") return;
     applyToSection(sel.sectionId, (lines) => {
-      const next = toggleWordMark(lines[sel.li], sel.bar, sel.word, selChar);
+      const next = toggleWordRange(lines[sel.li], sel.bar, sel.word, from, to);
       return next === lines[sel.li]
         ? lines
         : lines.map((l, i) => (i === sel.li ? next : l));
@@ -560,42 +617,32 @@ export function ReshapeView({
       )
     ) : undefined;
 
-  const selWordText =
-    sel?.kind === "word" && selLines
-      ? (lyricWords(lyricFor(selLines[sel.li], sel.bar))[sel.word] ?? "")
-      : "";
-
   const wordTools =
     sel?.kind === "word" && selLines?.[sel.li]?.bars[sel.bar] ? (
       <>
-        {selWordText.length > 1 && (
+        {selWordText.length > 1 ? (
           <div className="min-w-0 flex-1">
             <SyllableGaps
               word={selWordText}
-              selChar={selChar}
-              markedChars={
-                new Set(
-                  selSpan?.marks
-                    ?.filter((m) => m.word === sel.word && (m.char ?? 0) > 0)
-                    .map((m) => m.char!) ?? []
-                )
+              wordIndex={sel.word}
+              marks={selSpan?.marks}
+              accentClass={
+                sectionColor(data.sections[sel.sectionId]?.color ?? "").label
               }
-              onPick={(char) =>
-                setSel({ ...sel, char: char > 0 ? char : undefined })
-              }
+              onToggleRange={toggleRange}
             />
           </div>
+        ) : (
+          <span className="flex-1" />
         )}
-        {selWordText.length <= 1 && <span className="flex-1" />}
         <button
           type="button"
-          onClick={toggleMark}
+          disabled={selWordText.length === 0}
+          onClick={() => toggleRange(0, selWordText.length)}
           title={
             selMarked
-              ? "Remove the highlight"
-              : selChar > 0
-                ? "Highlight this syllable on the song map"
-                : "Highlight this word on the song map"
+              ? "Remove the whole word's highlight"
+              : "Highlight this word on the song map"
           }
           className={`${toolBtnCls} ${
             selMarked ? "bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800" : ""
@@ -742,10 +789,15 @@ export function ReshapeView({
 
       <SectionMatchBanner data={data} onApply={applyData} />
 
-      {orderedIds.map((id) => {
+      {orderedIds.map((id, idx) => {
         const def = data.sections[id];
         const color = sectionColor(def.color);
         const apply = (fn: (lines: Line[]) => Line[]) => applyToSection(id, fn);
+        const hasPrecedingBars = orderedIds
+          .slice(0, idx)
+          .some((prevId) =>
+            data.sections[prevId].lines.some((l) => l.bars.length > 0)
+          );
         return (
           <section
             key={id}
@@ -761,6 +813,16 @@ export function ReshapeView({
               >
                 {def.label}
               </h2>
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={() => deleteSection(id)}
+                aria-label={`Delete section ${def.label}`}
+                title="Delete this section"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-sm text-slate-400 hover:bg-white hover:text-rose-600"
+              >
+                🗑
+              </button>
             </div>
 
             <div className="px-4 pb-4 pt-2">
@@ -780,6 +842,7 @@ export function ReshapeView({
                   apply={apply}
                   sel={sel}
                   onSelect={setSel}
+                  hasPrecedingBars={hasPrecedingBars}
                 />
               )}
               {mode === "chords" && (
@@ -828,11 +891,11 @@ export function ReshapeView({
               : sel.kind === "bar"
                 ? "＋ add empty bar · 🗑 delete"
                 : sel.kind === "break"
-                  ? "◀ ▶ move the break one word"
+                  ? sel.boundary === 0
+                    ? "◀ ▶ move a word across the row (or section) boundary"
+                    : "◀ ▶ move the break one word"
                   : sel.kind === "word"
-                    ? selChar > 0
-                      ? "☆ highlights the syllable on the song map"
-                      : "☆ highlights it · letter gaps pick a syllable"
+                    ? "tap letters to highlight · gaps split off syllables"
                     : "◀ ▶ shift it one bar"
           }
           canLeft={canMove(-1)}

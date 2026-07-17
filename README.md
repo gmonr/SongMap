@@ -20,7 +20,9 @@ Nashville-number display.
 - **Transpose** — key selector plus ± semitone buttons; slash chords handled;
   spelling follows the target key (flats in flat keys).
 - **Structure encoding** — repeats (`×2`) and `same as Verse 1` references are
-  part of the data model; repeated sections render collapsed.
+  part of the data model; repeated sections render expanded (the map's point
+  is reading the whole song, chords and lyrics) and can be collapsed to
+  their one-line reference on demand.
 - **Structure-only mode** — hide lyrics to drill the chord map alone.
 - **Manual editor** — sections (label + color), lines, bars, chords with beat
   counts, split bars, per-bar lyric phrases, and arrangement ordering.
@@ -73,7 +75,11 @@ Nashville-number display.
   - **Rows** — tap the seam between two bars to break the row there; tap the
     merge seam between two rows to join them. Lyrics stay with their bar.
   - **Lyrics** — each bar shows its chord label over its words as pills; tap
-    the gap between two words to move the nearest bar break there. Tap a
+    the gap between two words to move the nearest bar break there. The
+    dashed **seam** at the start of a row is the same kind of boundary, but
+    its left neighbor is the previous row's — or previous section's — last
+    bar, so ◀ ▶ walk words across rows and sections: lyrics are one
+    song-wide continuous string that bars merely partition. Tap a
     bar's chord label to pick up its whole phrase, then ◀ ▶ to shift it a bar
     at a time (occupied neighbors ripple into the row's first empty bar).
   - **Chords** — tap a chord (say, the stray one in a split bar), then ◀ ▶ to
@@ -87,6 +93,10 @@ Nashville-number display.
     same gesture as word gaps in Lyrics mode. Empty `—` bars are tappable to
     give them a chord, seeded from the nearest chord (which is what `—`
     already meant).
+
+  Every section card carries a 🗑 to delete the whole section (definition
+  plus its arrangement instances) — how imported junk like metadata parsed
+  into a bogus "Intro" leaves the song without picking it apart bar by bar.
 
   Picking something up docks a **selection bar** at the bottom of the screen
   (thumb-sized ◀ ▶, nothing reflows around the selected chip), the header
@@ -168,12 +178,16 @@ closed in one pass:
   results show as a confirm-to-use chip naming the matched track — never
   auto-applied, since Deezer's analysis is sometimes halved or doubled.
   Privacy note: the lookup sends the title/artist to Deezer's public API.
-- **Word/syllable highlights** — in reshape's Lyrics mode, tap a word and
-  hit **☆ highlight** to render it bold in the section's accent color on
-  the song map; letter gaps narrow the highlight to a syllable
-  ("so·ñado"). Highlights are the singer's own landmarks for where the
-  words meet the chords — purely visual, no beat is stored, and each
-  bar's lyric always renders as one flowing block (never split or
+- **Word/syllable highlights** — in reshape's Lyrics mode, tap a word to
+  open a WYSIWYG picker in the selection bar: the word renders exactly as
+  the song map will show it (highlights bold in the section's accent
+  color), tap letter gaps to split off syllables and tap the letters to
+  toggle their highlight — inner syllables included ("so**ña**do"), since
+  each mark stores a `[char, end)` range. **☆ highlight** still toggles
+  the whole word, and the word pills in Lyrics mode render highlights the
+  same way the map does. Highlights are the singer's own landmarks for
+  where the words meet the chords — purely visual, no beat is stored, and
+  each bar's lyric always renders as one flowing block (never split or
   repositioned under the chords). Stored sparsely as `LyricSpan.marks`;
   a load-time normalizer (`lib/song/normalize.ts`) drops invalid marks
   and migrates the old word→beat anchor / pickup data from earlier blobs
@@ -219,7 +233,7 @@ SongData
 │    Line = { bars: { chords: { sym, beats }[] }[],
 │             lyrics: LyricSpan[] }
 │    LyricSpan = { text, bar,
-│                  marks?: { word, char? }[] }  // word/syllable highlights
+│                  marks?: { word, char?, end? }[] }  // word/syllable highlights
 └─ arrangement: { ref, instanceLabel, repeat?, sameChordsAs? }[]
 ```
 

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  barBeforeSeam,
   lineWordLayout,
   marksAfterRetype,
+  moveSeamWord,
   setBarLyric,
   setWordBoundary,
   shiftLyric,
 } from "../lyrics";
+import type { SongData } from "../types";
 import { bar, line, lyricsOf } from "./helpers";
 
 describe("lineWordLayout", () => {
@@ -191,5 +194,123 @@ describe("marksAfterRetype", () => {
     expect(
       marksAfterRetype([{ word: 1, char: 4 }], ["oh", "hey"])
     ).toBeUndefined();
+  });
+
+  it("an end past the shorter retyped word falls back to the word's end", () => {
+    expect(
+      marksAfterRetype([{ word: 0, char: 1, end: 5 }], ["hey"])
+    ).toEqual([{ word: 0, char: 1 }]);
+    expect(
+      marksAfterRetype([{ word: 0, char: 1, end: 3 }], ["hey"])
+    ).toEqual([{ word: 0, char: 1, end: 3 }]);
+  });
+});
+
+/** Two sections of two rows each, one bar per row, one word per bar. */
+function seamSong(): SongData {
+  return {
+    sections: {
+      a: {
+        label: "A",
+        color: "blue",
+        lines: [
+          line([bar("C"), bar("F")], { 0: "one", 1: "two" }),
+          line([bar("G")], { 0: "three" }),
+        ],
+      },
+      b: {
+        label: "B",
+        color: "red",
+        lines: [line([bar("Am")], { 0: "four" })],
+      },
+    },
+    arrangement: [
+      { ref: "a", instanceLabel: "A" },
+      { ref: "b", instanceLabel: "B" },
+    ],
+  };
+}
+const ORDER = ["a", "b"];
+const lyricAt = (d: SongData, id: string, li: number, bi: number) =>
+  d.sections[id].lines[li].lyrics.find((s) => s.bar === bi)?.text ?? "";
+
+describe("barBeforeSeam", () => {
+  it("finds the previous row's last bar within a section", () => {
+    expect(barBeforeSeam(seamSong(), ORDER, "a", 1)).toEqual({
+      sectionId: "a",
+      li: 0,
+      bi: 1,
+    });
+  });
+
+  it("crosses into the previous section for a section's first row", () => {
+    expect(barBeforeSeam(seamSong(), ORDER, "b", 0)).toEqual({
+      sectionId: "a",
+      li: 1,
+      bi: 0,
+    });
+  });
+
+  it("skips bar-less rows and returns null before the first bar", () => {
+    const d = seamSong();
+    d.sections.b.lines.unshift({ bars: [], lyrics: [] });
+    expect(barBeforeSeam(d, ORDER, "b", 1)).toEqual({
+      sectionId: "a",
+      li: 1,
+      bi: 0,
+    });
+    expect(barBeforeSeam(seamSong(), ORDER, "a", 0)).toBeNull();
+  });
+});
+
+describe("moveSeamWord", () => {
+  it("moves a word down across a row boundary and back", () => {
+    const d = seamSong();
+    const down = moveSeamWord(d, ORDER, "a", 1, -1);
+    expect(lyricAt(down, "a", 0, 1)).toBe("");
+    expect(lyricAt(down, "a", 1, 0)).toBe("two three");
+    const back = moveSeamWord(down, ORDER, "a", 1, 1);
+    expect(lyricAt(back, "a", 0, 1)).toBe("two");
+    expect(lyricAt(back, "a", 1, 0)).toBe("three");
+  });
+
+  it("moves a word across a section boundary, both ways", () => {
+    const d = seamSong();
+    const down = moveSeamWord(d, ORDER, "b", 0, -1);
+    expect(lyricAt(down, "a", 1, 0)).toBe("");
+    expect(lyricAt(down, "b", 0, 0)).toBe("three four");
+    const up = moveSeamWord(d, ORDER, "b", 0, 1);
+    expect(lyricAt(up, "a", 1, 0)).toBe("three four");
+    expect(lyricAt(up, "b", 0, 0)).toBe("");
+  });
+
+  it("carries highlights with the word and reindexes the rest", () => {
+    const d = seamSong();
+    d.sections.a.lines[0].lyrics = [
+      { text: "one", bar: 0 },
+      { text: "oh two", bar: 1, marks: [{ word: 1, char: 1, end: 2 }] },
+    ];
+    d.sections.a.lines[1].lyrics = [
+      { text: "three", bar: 0, marks: [{ word: 0 }] },
+    ];
+    const down = moveSeamWord(d, ORDER, "a", 1, -1);
+    const target = down.sections.a.lines[1].lyrics.find((s) => s.bar === 0);
+    expect(target?.text).toBe("two three");
+    expect(target?.marks).toEqual([
+      { word: 0, char: 1, end: 2 }, // rode along with "two"
+      { word: 1 }, // "three" shifted right
+    ]);
+  });
+
+  it("no-ops by reference when the donor bar has no words or nothing precedes", () => {
+    const d = seamSong();
+    expect(moveSeamWord(d, ORDER, "a", 0, -1)).toBe(d); // no seam before first bar
+    d.sections.a.lines[0].lyrics = d.sections.a.lines[0].lyrics.filter(
+      (s) => s.bar !== 1
+    );
+    expect(moveSeamWord(d, ORDER, "a", 1, -1)).toBe(d); // left bar empty
+    const e = seamSong();
+    e.sections.a.lines[1].lyrics = [];
+    expect(moveSeamWord(e, ORDER, "a", 1, 1)).toBe(e); // right bar empty
   });
 });
