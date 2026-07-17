@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   barIndexAt,
+  barIndexForSection,
   buildTimeline,
   firstBarOfItem,
   sectionLoopRange,
@@ -151,5 +152,28 @@ describe("barIndexAt", () => {
     expect(t.bars[barIndexAt(t, 1, 0, 0)].pass).toBe(0);
     expect(barIndexAt(t, 0, 0, 9)).toBe(-1);
     expect(barIndexAt(t, 5, 0, 0)).toBe(-1);
+  });
+});
+
+describe("barIndexForSection", () => {
+  it("maps a section-addressed bar to its first arrangement instance", () => {
+    const data = song();
+    const t = buildTimeline(data);
+    expect(barIndexForSection(t, data.arrangement, "v", 0, 1)).toBe(1);
+    expect(barIndexForSection(t, data.arrangement, "c", 0, 0)).toBe(2);
+  });
+
+  it("uses the first instance when a section is arranged twice", () => {
+    const data = song();
+    data.arrangement.push({ ref: "v", instanceLabel: "Verse 2" });
+    const t = buildTimeline(data);
+    expect(barIndexForSection(t, data.arrangement, "v", 0, 0)).toBe(0);
+  });
+
+  it("rejects unarranged sections and missing bars", () => {
+    const data = song();
+    const t = buildTimeline(data);
+    expect(barIndexForSection(t, data.arrangement, "bridge", 0, 0)).toBe(-1);
+    expect(barIndexForSection(t, data.arrangement, "v", 0, 9)).toBe(-1);
   });
 });

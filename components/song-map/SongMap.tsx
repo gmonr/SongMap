@@ -88,6 +88,30 @@ export function SongMap({
     setSource(null);
   };
 
+  // Engine hand-offs from the docked bars: no scrolling back to the header,
+  // and mid-song the other engine picks up from the same bar. Read the
+  // position BEFORE stop() — it nulls the playhead. When idle/paused the
+  // other transport just opens stopped.
+  const switchToSpotify = () => {
+    if (!link.trackId) {
+      setLinkDialogOpen(true);
+      return;
+    }
+    const idx = pb.barNumber - 1;
+    const wasPlaying = pb.status === "playing";
+    pb.stop();
+    setSource("spotify");
+    if (wasPlaying && idx >= 0) sp.playFromBar(idx);
+  };
+  const switchToSynth = () => {
+    const idx = sp.barNumber - 1;
+    const wasPlaying = sp.status === "playing";
+    sp.stop();
+    setSource("synth");
+    // No count-in: the hand-off continues playback, it doesn't restart it.
+    if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
+  };
+
   const { tonic: displayTonic, minor } = parseKey(displayKey);
 
   // "same as Verse 1" labels: first arrangement instance of each section.
@@ -329,6 +353,7 @@ export function SongMap({
               : null
           }
           onClose={closePlayback}
+          onSwitch={spotifyEnabled ? switchToSpotify : undefined}
         />
       )}
       {source === "spotify" && (
@@ -336,6 +361,7 @@ export function SongMap({
           sp={sp}
           song={song}
           onClose={closePlayback}
+          onSwitch={switchToSynth}
           onUnlink={() => {
             if (!window.confirm("Unlink this track and delete its anchors?")) {
               return;

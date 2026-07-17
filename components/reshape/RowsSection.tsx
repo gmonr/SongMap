@@ -17,12 +17,15 @@ export function RowsSection({
   apply,
   sel,
   onSelect,
+  playhead,
 }: {
   def: SectionDef;
   sectionId: string;
   apply: (fn: (lines: Line[]) => Line[]) => void;
   sel: ReshapeSelection | null;
   onSelect: (sel: ReshapeSelection | null) => void;
+  /** This section's bar under the Spotify playhead, if any. */
+  playhead?: { li: number; bi: number } | null;
 }) {
   return (
     <div className="space-y-1">
@@ -45,6 +48,7 @@ export function RowsSection({
                     bar={bar}
                     lyric={lyricFor(line, bi)}
                     selected={selectedHere}
+                    playhead={playhead?.li === li && playhead.bi === bi}
                     onTap={() =>
                       onSelect(
                         selectedHere ? null : { kind: "bar", sectionId, li, bi }

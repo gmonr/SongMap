@@ -14,11 +14,15 @@ export function PlaybackBar({
   pb,
   sectionLabel,
   onClose,
+  onSwitch,
 }: {
   pb: Playback;
   /** Instance label of the section under the playhead, e.g. "Chorus". */
   sectionLabel: string | null;
   onClose: () => void;
+  /** Hand off to the Spotify transport without leaving the bar; omit to
+   *  hide the switch (Spotify not configured). */
+  onSwitch?: () => void;
 }) {
   const totalBars = pb.timeline.bars.length;
   const squareBtn =
@@ -127,6 +131,16 @@ export function PlaybackBar({
             </button>
           )}
         </div>
+        {onSwitch && (
+          <button
+            type="button"
+            onClick={onSwitch}
+            title="Switch to the Spotify recording from the same bar"
+            className="rounded-md border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-100"
+          >
+            ♫ Spotify
+          </button>
+        )}
         <span className="flex-1" />
         <button
           type="button"

@@ -28,6 +28,8 @@ export function SelectionBar({
   tools,
   edit,
   notice,
+  onPlayFromHere,
+  docked = true,
 }: {
   /** What is picked up, e.g. the chord symbol or the lyric phrase. */
   title: string;
@@ -56,13 +58,25 @@ export function SelectionBar({
   /** Optional banner row docked on top of the bar (e.g. a propagation
    *  offer), so it stays in thumb reach next to the actions it follows. */
   notice?: ReactNode;
+  /** Play the recording from the selection's bar (shown while the Spotify
+   *  transport is open) — hear the spot being reshaped without moving. */
+  onPlayFromHere?: () => void;
+  /** false renders the rows without the fixed-bottom shell, for hosts that
+   *  stack this bar with others inside their own docked wrapper. */
+  docked?: boolean;
 }) {
   /** The in-progress edit text; null when not editing. */
   const [draft, setDraft] = useState<string | null>(null);
   const arrowCls =
     "flex h-11 w-14 items-center justify-center rounded-lg bg-blue-50 text-lg font-bold text-blue-600 hover:bg-blue-100 active:bg-blue-200 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-300";
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
+    <div
+      className={
+        docked
+          ? "fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur"
+          : undefined
+      }
+    >
       {notice}
       {edit && draft !== null ? (
         <form
@@ -108,6 +122,17 @@ export function SelectionBar({
               <p className="truncate text-sm font-bold">{title}</p>
               <p className="truncate text-[11px] text-slate-400">{subtitle}</p>
             </div>
+            {onPlayFromHere && (
+              <button
+                type="button"
+                onClick={onPlayFromHere}
+                aria-label="Play the recording from this bar"
+                title="Play the recording from this bar"
+                className="flex h-11 w-11 items-center justify-center rounded-lg bg-green-50 text-sm font-bold text-green-700 hover:bg-green-100 active:bg-green-200"
+              >
+                ♫▶
+              </button>
+            )}
             {edit && (
               <button
                 type="button"

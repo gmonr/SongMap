@@ -18,6 +18,7 @@ export function BarChip({
   onChordTap,
   selected,
   onTap,
+  playhead,
 }: {
   bar: Line["bars"][number];
   lyric: string;
@@ -27,6 +28,8 @@ export function BarChip({
   selected?: boolean;
   /** Make the whole chip one tap target; don't combine with onChordTap. */
   onTap?: () => void;
+  /** The bar sounding right now while the Spotify transport plays. */
+  playhead?: boolean;
 }) {
   const Root = onTap ? "button" : "div";
   return (
@@ -41,7 +44,7 @@ export function BarChip({
             : onTap
               ? "border-slate-200 hover:border-blue-400"
               : "border-slate-200"
-        }`}
+        } ${playhead ? "bar-playhead" : ""}`}
       >
         {bar.chords.map((c, i) =>
           onChordTap ? (

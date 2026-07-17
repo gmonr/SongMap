@@ -37,6 +37,7 @@ export function LyricsSection({
   hasPrecedingBars,
   seamLeftAt,
   onSeamGap,
+  playhead,
 }: {
   def: SectionDef;
   sectionId: string;
@@ -54,6 +55,8 @@ export function LyricsSection({
    *  dir 1 pulling them up out of the seam's row, dir -1 pushing the
    *  previous row's tail down into it. */
   onSeamGap?: (dir: -1 | 1, count: number) => void;
+  /** This section's bar under the Spotify playhead, if any. */
+  playhead?: { li: number; bi: number } | null;
 }) {
   const color = sectionColor(def.color);
   const applyToLine = (li: number, fn: (line: Line) => Line) =>
@@ -199,6 +202,10 @@ export function LyricsSection({
                   <div
                     className={`flex min-w-0 flex-col gap-0.5 rounded-md px-1 py-0.5 ${
                       selected ? "bg-blue-50 ring-1 ring-blue-300" : ""
+                    } ${
+                      playhead?.li === li && playhead.bi === bi
+                        ? "bar-playhead"
+                        : ""
                     }`}
                   >
                     <button

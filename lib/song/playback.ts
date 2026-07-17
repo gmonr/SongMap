@@ -110,3 +110,21 @@ export function barIndexAt(
     (b) => b.arrIdx === arrIdx && b.pass === 0 && b.li === li && b.bi === bi
   );
 }
+
+/**
+ * Timeline index of bar (li, bi) of section `sectionId`'s first arrangement
+ * instance, or -1 when the section isn't arranged or has no such bar. This
+ * is how reshape — which addresses bars by section, not arrangement item —
+ * turns a selection into a playback position.
+ */
+export function barIndexForSection(
+  t: Timeline,
+  arrangement: SongData["arrangement"],
+  sectionId: string,
+  li: number,
+  bi: number
+): number {
+  const arrIdx = arrangement.findIndex((it) => it.ref === sectionId);
+  if (arrIdx === -1) return -1;
+  return barIndexAt(t, arrIdx, li, bi);
+}
