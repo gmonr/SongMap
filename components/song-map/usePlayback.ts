@@ -31,6 +31,9 @@ export interface Playback {
   loop: LoopMode;
   play: () => void;
   playFromItem: (arrIdx: number) => void;
+  /** Start at timeline bar `idx`; `noCountIn` for engine hand-offs, where
+   *  playback is continuing rather than starting fresh. */
+  playFromBar: (idx: number, opts?: { noCountIn?: boolean }) => void;
   /** Start at a tapped chord: bar (arrIdx, li, bi), chord index ci. */
   playFromChord: (arrIdx: number, li: number, bi: number, ci: number) => void;
   /** Toggle pause/resume (starts from the top when stopped). */
@@ -84,7 +87,7 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
   };
   useEffect(() => disposeEngine, []);
 
-  const startAt = (idx: number, skipBeats = 0) => {
+  const startAt = (idx: number, skipBeats = 0, noCountIn = false) => {
     if (timeline.bars.length === 0) return;
     disposeEngine();
     const engine = new PlaybackEngine(timeline, {
@@ -109,7 +112,8 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
     });
     engineRef.current = engine;
     anchorArr.current = timeline.bars[idx]?.arrIdx ?? -1;
-    const countIn = countInOn ? timeline.bars[idx]?.beats ?? 0 : 0;
+    const countIn =
+      countInOn && !noCountIn ? timeline.bars[idx]?.beats ?? 0 : 0;
     // Clear the old playhead right away so a seek doesn't leave the
     // previous bar highlighted through the count-in.
     setCurrentIdx(null);
@@ -187,6 +191,9 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
     loop,
     play: () => startAt(0),
     playFromItem,
+    playFromBar: (idx, opts) => {
+      if (timeline.bars[idx]) startAt(idx, 0, opts?.noCountIn ?? false);
+    },
     playFromChord,
     toggle,
     stop,

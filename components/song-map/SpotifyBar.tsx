@@ -15,11 +15,24 @@ export function SpotifyBar({
   song,
   onClose,
   onUnlink,
+  onSwitch,
+  showCalibrate = true,
+  docked = true,
 }: {
   sp: SpotifyPlayback;
   song: SongRow;
   onClose: () => void;
-  onUnlink: () => void;
+  /** Unlink the track; omit to hide the action (reshape hosts the bar but
+   *  keeps link management on the song map). */
+  onUnlink?: () => void;
+  /** Hand off to the synth transport without leaving the bar. */
+  onSwitch?: () => void;
+  /** Hide the calibrate disclosure where anchor edits don't belong
+   *  (reshape) — recalibration stays a song-map activity. */
+  showCalibrate?: boolean;
+  /** false renders the rows without the fixed-bottom shell, for hosts that
+   *  stack this bar with others inside their own docked wrapper. */
+  docked?: boolean;
 }) {
   const pathname = usePathname();
   const totalBars = sp.timeline.bars.length;
@@ -48,14 +61,32 @@ export function SpotifyBar({
     ? song.data.arrangement[sp.current.arrIdx]?.instanceLabel ?? null
     : null;
 
+  const switchBtn = onSwitch && (
+    <button
+      type="button"
+      onClick={onSwitch}
+      title="Switch to the built-in synth from the same bar"
+      className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+    >
+      ▶ Synth
+    </button>
+  );
+
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
+    <div
+      className={
+        docked
+          ? "fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur"
+          : undefined
+      }
+    >
       {sp.connected === false ? (
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <p className="min-w-0 flex-1 text-sm text-slate-600">
             Connect Spotify to play the recording from any bar (Premium
             required for playback control).
           </p>
+          {switchBtn}
           <a
             href={`/api/spotify/login?next=${encodeURIComponent(pathname)}`}
             className="shrink-0 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
@@ -173,23 +204,28 @@ export function SpotifyBar({
             >
               ⟳
             </button>
+            {switchBtn}
             <span className="flex-1" />
             {sp.sync.anchors.length === 0 && !sp.calibrating && (
               <span className="text-[11px] text-amber-600">
-                not synced — calibrate bar 1
+                {showCalibrate
+                  ? "not synced — calibrate bar 1"
+                  : "not synced — calibrate on the song map"}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => sp.setCalibrating(!sp.calibrating)}
-              aria-pressed={sp.calibrating}
-              className={toggleCls(sp.calibrating)}
-            >
-              calibrate
-            </button>
+            {showCalibrate && (
+              <button
+                type="button"
+                onClick={() => sp.setCalibrating(!sp.calibrating)}
+                aria-pressed={sp.calibrating}
+                className={toggleCls(sp.calibrating)}
+              >
+                calibrate
+              </button>
+            )}
           </div>
 
-          {sp.calibrating && (
+          {showCalibrate && sp.calibrating && (
             <div className="mx-auto max-w-5xl space-y-2 border-t border-slate-100 px-4 py-2">
               <p className="text-[11px] text-slate-500">
                 Tap a bar on the map to arm it (bar 1 is armed by default),
@@ -254,13 +290,15 @@ export function SpotifyBar({
                   ))}
                 </ul>
               )}
-              <button
-                type="button"
-                onClick={onUnlink}
-                className="text-[11px] text-slate-400 hover:text-red-600 hover:underline"
-              >
-                unlink this track
-              </button>
+              {onUnlink && (
+                <button
+                  type="button"
+                  onClick={onUnlink}
+                  className="text-[11px] text-slate-400 hover:text-red-600 hover:underline"
+                >
+                  unlink this track
+                </button>
+              )}
             </div>
           )}
         </>

@@ -19,11 +19,14 @@ export function ChordsSection({
   sectionId,
   sel,
   onSelect,
+  playhead,
 }: {
   def: SectionDef;
   sectionId: string;
   sel: ReshapeSelection | null;
   onSelect: (sel: ReshapeSelection | null) => void;
+  /** This section's bar under the Spotify playhead, if any. */
+  playhead?: { li: number; bi: number } | null;
 }) {
   return (
     <div className="space-y-1">
@@ -44,6 +47,7 @@ export function ChordsSection({
                 <BarChip
                   bar={bar}
                   lyric={lyricFor(line, bi)}
+                  playhead={playhead?.li === li && playhead.bi === bi}
                   selectedChord={selectedHere ? sel.ci : null}
                   onChordTap={(ci) =>
                     onSelect(

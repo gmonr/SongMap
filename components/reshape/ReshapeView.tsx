@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   chordMoveTarget,
   deleteChord,
@@ -33,6 +33,7 @@ import {
   shiftLyric,
 } from "@/lib/song/lyrics";
 import { toggleWordRange, wordIntervals } from "@/lib/song/marks";
+import { barIndexForSection } from "@/lib/song/playback";
 import {
   encodeFocus,
   mapSelection,
@@ -43,8 +44,14 @@ import {
 } from "@/lib/song/selection";
 import { beatsPerBar } from "@/lib/song/types";
 import type { Line, SongData, SongRow } from "@/lib/song/types";
+import { isSpotifyConfigured } from "@/lib/spotify/env";
+import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
+import { SpotifyBar } from "@/components/song-map/SpotifyBar";
+import { SpotifyLinkDialog } from "@/components/song-map/SpotifyLinkDialog";
+import { useSpotifyPlayback } from "@/components/song-map/useSpotifyPlayback";
 import { PropagateBanner } from "./PropagateBanner";
 import { lyricFor } from "./BarChip";
 import { BeatDots } from "./BeatDots";
@@ -141,8 +148,40 @@ export function ReshapeView({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dirty = data !== song.data;
+  // What the server currently holds: Save updates it in place (save-and-stay)
+  // so listening/reshaping continues uninterrupted; exit is the ← link.
+  const [savedData, setSavedData] = useState<SongData>(song.data);
+  const dirty = data !== savedData;
   const beats = beatsPerBar(song.time_signature);
+
+  // Spotify while reshaping: hear the recording as the feedback loop for
+  // restructuring. The hook plays the DRAFT's timeline (playSong merges the
+  // edited data in), so the playhead always matches what's on screen — but
+  // calibration is hidden here (showCalibrate=false on the bar), so anchor
+  // edits/saves stay a song-map activity.
+  const spotifyEnabled = isSpotifyConfigured && isSupabaseConfigured;
+  const [spotifyOpen, setSpotifyOpen] = useState(false);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [link, setLink] = useState<{
+    trackId: string | null;
+    sync: SpotifySyncData | null;
+  }>(() => ({
+    trackId: song.spotify_track_id ?? null,
+    sync: song.spotify_sync ? normalizeSync(song.spotify_sync) : null,
+  }));
+  const playSong = useMemo<SongRow>(() => ({ ...song, data }), [song, data]);
+  const sp = useSpotifyPlayback(playSong, link.trackId, link.sync, spotifyOpen);
+
+  const toggleSpotify = () => {
+    if (spotifyOpen) {
+      sp.stop();
+      setSpotifyOpen(false);
+    } else if (link.trackId) {
+      setSpotifyOpen(true);
+    } else {
+      setLinkDialogOpen(true);
+    }
+  };
 
   // Mode switches stay on the same bar: the selection maps to its
   // equivalent in the new mode (or drops if there is none, e.g. a lyric-less
@@ -164,6 +203,55 @@ export function ReshapeView({
       .getElementById(reshapeBarDomId(anchor))
       ?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [mode]);
+
+  // The Spotify playhead mapped onto reshape's section-addressed bars.
+  // Reshape renders each section once, so any arrangement instance of it
+  // (repeats, same-as copies) highlights that one rendering.
+  const playheadBar = spotifyOpen ? sp.current : null;
+  const playheadSectionId = playheadBar
+    ? data.arrangement[playheadBar.arrIdx]?.ref ?? null
+    : null;
+  const playheadIn = (id: string) =>
+    playheadBar && playheadSectionId === id
+      ? { li: playheadBar.li, bi: playheadBar.bi }
+      : null;
+  const playheadDomId =
+    playheadBar && playheadSectionId
+      ? reshapeBarDomId({
+          sectionId: playheadSectionId,
+          li: playheadBar.li,
+          bi: playheadBar.bi,
+        })
+      : null;
+
+  // Follow the playhead like the song map's BarCell: scroll only when the
+  // bar leaves the viewport's middle band — and never while something is
+  // picked up, so the page can't yank mid-edit.
+  const selActive = sel !== null;
+  useEffect(() => {
+    if (!playheadDomId || selActive) return;
+    const el = document.getElementById(playheadDomId);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const h = window.innerHeight;
+    if (r.top < h * 0.15 || r.bottom > h * 0.75) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [playheadDomId, selActive]);
+
+  // ♫▶ in the SelectionBar: hear the recording from the bar being reshaped.
+  const playFromSelection = () => {
+    const anchor = selectionAnchor(sel, data);
+    if (!anchor) return;
+    const idx = barIndexForSection(
+      sp.timeline,
+      data.arrangement,
+      anchor.sectionId,
+      anchor.li,
+      anchor.bi
+    );
+    if (idx !== -1) sp.playFromBar(idx);
+  };
 
   // The most recent pick-up, so leaving for the song map can point at the
   // bar the user was last working on even after they tapped it off.
@@ -721,6 +809,11 @@ export function ReshapeView({
       />
     ) : null;
 
+  // Save-and-stay: reshaping (and any Spotify playback) continues; the
+  // ← Song map link is the exit. Saving touches only `data` — Spotify
+  // anchors live in their own columns — so a save can never clash with the
+  // transport. router.refresh() keeps the server-rendered map fresh for
+  // the eventual exit without remounting this view.
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -734,9 +827,63 @@ export function ReshapeView({
       setError(error.message);
       return;
     }
-    router.push(exitHref);
+    setSavedData(data);
     router.refresh();
   };
+
+  // The docked action bar for the current selection. A const (not inline)
+  // because it renders in two homes: standalone fixed at the bottom, or —
+  // while the Spotify transport is open — undocked inside the shared shell
+  // that stacks it above the transport.
+  const selectionBar = sel && (
+    <SelectionBar
+      docked={!spotifyOpen}
+      onPlayFromHere={spotifyOpen ? playFromSelection : undefined}
+      notice={offerBanner ?? undefined}
+      // Keyed by selection identity so a mid-edit tap on another chip
+      // resets the SelectionBar's draft instead of carrying it over.
+      key={
+        sel.kind === "chord"
+          ? `c:${sel.sectionId}:${sel.li}:${sel.bi}:${sel.ci}`
+          : sel.kind === "bar"
+            ? `b:${sel.sectionId}:${sel.li}:${sel.bi}`
+            : sel.kind === "break"
+              ? `k:${sel.sectionId}:${sel.li}:${sel.boundary}`
+              : sel.kind === "word"
+                ? `w:${sel.sectionId}:${sel.li}:${sel.bar}:${sel.word}`
+                : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
+      }
+      title={selTitle}
+      subtitle={
+        sel.kind === "chord"
+          ? selIsEmptyBar
+            ? "＋ gives this empty bar a chord"
+            : "◀ ▶ move it one bar"
+          : sel.kind === "bar"
+            ? "＋ add empty bar · 🗑 delete"
+            : sel.kind === "break"
+              ? sel.boundary === 0
+                ? "◀ ▶ move words across the row boundary · gaps place it"
+                : "◀ ▶ move the break one word"
+              : sel.kind === "word"
+                ? "tap letters to highlight · gaps split off syllables"
+                : "◀ ▶ shift it one bar"
+      }
+      canLeft={canMove(-1)}
+      canRight={canMove(1)}
+      moveLabel={
+        sel.kind === "chord"
+          ? "Move chord"
+          : sel.kind === "break"
+            ? "Move break"
+            : "Shift phrase"
+      }
+      onMove={sel.kind === "bar" || sel.kind === "word" ? undefined : moveSel}
+      onClear={() => setSel(null)}
+      tools={chordTools ?? barTools ?? wordTools}
+      edit={selEdit}
+    />
+  );
 
   return (
     <div
@@ -778,6 +925,22 @@ export function ReshapeView({
         <div className="flex items-center gap-2">
           <ModeToggle mode={mode} onChange={setMode} />
           <span className="flex-1" />
+          {spotifyEnabled && (
+            <button
+              type="button"
+              onClick={toggleSpotify}
+              aria-pressed={spotifyOpen}
+              aria-label="Listen on Spotify while reshaping"
+              title="Listen on Spotify while reshaping"
+              className={`flex h-9 w-9 items-center justify-center rounded-md border text-base ${
+                spotifyOpen
+                  ? "border-green-300 bg-green-50 text-green-700"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              ♫
+            </button>
+          )}
           <button
             type="button"
             onClick={undo}
@@ -850,6 +1013,7 @@ export function ReshapeView({
                   apply={apply}
                   sel={sel}
                   onSelect={setSel}
+                  playhead={playheadIn(id)}
                 />
               )}
               {mode === "lyrics" && (
@@ -867,6 +1031,7 @@ export function ReshapeView({
                           moveSeamBy(seamSel.sectionId, seamSel.li, dir, count)
                       : undefined
                   }
+                  playhead={playheadIn(id)}
                 />
               )}
               {mode === "chords" && (
@@ -875,6 +1040,7 @@ export function ReshapeView({
                   sectionId={id}
                   sel={sel}
                   onSelect={setSel}
+                  playhead={playheadIn(id)}
                 />
               )}
             </div>
@@ -882,7 +1048,11 @@ export function ReshapeView({
         );
       })}
 
-      {!sel && offerBanner && (
+      {/* Clearance for the docked Spotify transport, additive with the
+          selection padding ladder above. */}
+      {spotifyOpen && <div className="h-28" aria-hidden />}
+
+      {!spotifyOpen && !sel && offerBanner && (
         // No selection to dock onto (e.g. a delete dropped it) — the offer
         // still renders in the SelectionBar's fixed slot.
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
@@ -890,53 +1060,42 @@ export function ReshapeView({
         </div>
       )}
 
-      {sel && (
-        <SelectionBar
-          notice={offerBanner ?? undefined}
-          // Keyed by selection identity so a mid-edit tap on another chip
-          // resets the SelectionBar's draft instead of carrying it over.
-          key={
-            sel.kind === "chord"
-              ? `c:${sel.sectionId}:${sel.li}:${sel.bi}:${sel.ci}`
-              : sel.kind === "bar"
-                ? `b:${sel.sectionId}:${sel.li}:${sel.bi}`
-                : sel.kind === "break"
-                  ? `k:${sel.sectionId}:${sel.li}:${sel.boundary}`
-                  : sel.kind === "word"
-                    ? `w:${sel.sectionId}:${sel.li}:${sel.bar}:${sel.word}`
-                    : `p:${sel.sectionId}:${sel.li}:${sel.bar}`
-          }
-          title={selTitle}
-          subtitle={
-            sel.kind === "chord"
-              ? selIsEmptyBar
-                ? "＋ gives this empty bar a chord"
-                : "◀ ▶ move it one bar"
-              : sel.kind === "bar"
-                ? "＋ add empty bar · 🗑 delete"
-                : sel.kind === "break"
-                  ? sel.boundary === 0
-                    ? "◀ ▶ move words across the row boundary · gaps place it"
-                    : "◀ ▶ move the break one word"
-                  : sel.kind === "word"
-                    ? "tap letters to highlight · gaps split off syllables"
-                    : "◀ ▶ shift it one bar"
-          }
-          canLeft={canMove(-1)}
-          canRight={canMove(1)}
-          moveLabel={
-            sel.kind === "chord"
-              ? "Move chord"
-              : sel.kind === "break"
-                ? "Move break"
-                : "Shift phrase"
-          }
-          onMove={
-            sel.kind === "bar" || sel.kind === "word" ? undefined : moveSel
-          }
-          onClear={() => setSel(null)}
-          tools={chordTools ?? barTools ?? wordTools}
-          edit={selEdit}
+      {sel && !spotifyOpen && selectionBar}
+
+      {spotifyOpen && (
+        // One docked shell for everything at the bottom: the transient
+        // selection actions (or a stray offer banner) stack on top of the
+        // persistent Spotify transport.
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
+          {!sel && offerBanner}
+          {sel && selectionBar}
+          <div
+            className={
+              sel || offerBanner ? "border-t border-slate-100" : undefined
+            }
+          >
+            <SpotifyBar
+              sp={sp}
+              song={playSong}
+              docked={false}
+              showCalibrate={false}
+              onClose={toggleSpotify}
+            />
+          </div>
+        </div>
+      )}
+
+      {linkDialogOpen && (
+        <SpotifyLinkDialog
+          songId={song.id}
+          title={song.title}
+          artist={song.artist}
+          onClose={() => setLinkDialogOpen(false)}
+          onLinked={(trackId, sync) => {
+            setLink({ trackId, sync });
+            setLinkDialogOpen(false);
+            setSpotifyOpen(true);
+          }}
         />
       )}
     </div>

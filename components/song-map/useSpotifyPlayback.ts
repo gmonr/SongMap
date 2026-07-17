@@ -51,6 +51,8 @@ export interface SpotifyPlayback {
 
   play: () => void;
   playFromItem: (arrIdx: number) => void;
+  /** Seek the recording to timeline bar `idx`'s downbeat and play. */
+  playFromBar: (idx: number) => void;
   playFromChord: (arrIdx: number, li: number, bi: number, ci: number) => void;
   toggle: () => void;
   stop: () => void;
@@ -493,6 +495,10 @@ export function useSpotifyPlayback(
     sync,
     play: () => playFromBeat(0),
     playFromItem,
+    playFromBar: (idx) => {
+      const bar = timeline.bars[idx];
+      if (bar) playFromBeat(bar.startBeat);
+    },
     playFromChord,
     toggle,
     stop,
