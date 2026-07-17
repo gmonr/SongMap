@@ -18,7 +18,8 @@ import type { ReshapeSelection } from "./ReshapeView";
  *   surprise by folding words the other way.
  * - The seam at the start of a row (boundary 0): same gesture, but its left
  *   neighbor is the previous row's — or previous section's — last bar, so
- *   ◀ ▶ walk words across rows and sections. Lyrics are a song-wide
+ *   ◀ ▶ and the lit word gaps (in both adjacent bars, across the row or
+ *   section boundary) walk words over it. Lyrics are a song-wide
  *   continuous string; rows and sections just partition it.
  * - A bar's chord header: tap to pick up its whole phrase; ◀ ▶ shift it a
  *   bar at a time (occupied neighbors ripple into the row's first empty
@@ -34,6 +35,8 @@ export function LyricsSection({
   sel,
   onSelect,
   hasPrecedingBars,
+  seamLeftAt,
+  onSeamGap,
 }: {
   def: SectionDef;
   sectionId: string;
@@ -43,6 +46,14 @@ export function LyricsSection({
   /** Whether any bar exists before this section in the song's display
    *  order, i.e. whether the first row's leading seam has a left side. */
   hasPrecedingBars: boolean;
+  /** When the selected seam's *left* bar is in this section: its address,
+   *  so its word gaps light up as placement targets too. (The seam itself
+   *  may be selected in a later section's component.) */
+  seamLeftAt?: { li: number; bi: number } | null;
+  /** Place the selected seam via a gap tap: move `count` words across it,
+   *  dir 1 pulling them up out of the seam's row, dir -1 pushing the
+   *  previous row's tail down into it. */
+  onSeamGap?: (dir: -1 | 1, count: number) => void;
 }) {
   const color = sectionColor(def.color);
   const applyToLine = (li: number, fn: (line: Line) => Line) =>
@@ -67,30 +78,51 @@ export function LyricsSection({
             ? sel.boundary
             : null;
 
-        // Placement slots for a picked-up mid-row break: every word gap in
-        // the two bars it sits between, except where it already is. (The
-        // row-start seam moves via ◀ ▶ only — its left bar renders in
-        // another row or section.) Slim 1px seam with a ~24px invisible
-        // hit box (wider than its layout space via negative margins,
-        // floating above the inert word chips beside it).
+        // Placement slots for the picked-up boundary: every word gap in the
+        // two bars it sits between, except where it already is. A mid-row
+        // break's pair is in this row; a row-start seam's pair straddles
+        // the seam — bar 0 of its own row plus the previous row's (maybe
+        // another section's) last bar, which `seamLeftAt` points at. Slim
+        // 1px seam with a ~24px invisible hit box (wider than its layout
+        // space via negative margins, floating above the inert word chips
+        // beside it).
         const gapButton = (bi: number, gapInBar: number) => {
+          let onTap: (() => void) | null = null;
           if (
-            selBreak === null ||
-            selBreak === 0 ||
-            (bi !== selBreak - 1 && bi !== selBreak)
+            selBreak !== null &&
+            selBreak > 0 &&
+            (bi === selBreak - 1 || bi === selBreak)
           ) {
-            return null;
+            const gap = layout.bars[bi].start + gapInBar;
+            if (gap === layout.bars[selBreak].start) return null;
+            onTap = () =>
+              applyToLine(li, (l) => setWordBoundary(l, selBreak, gap));
+          } else if (selBreak === 0 && bi === 0 && gapInBar > 0 && onSeamGap) {
+            // Right side of the selected seam: the words before this gap
+            // move up across it. gapInBar 0 is the seam itself.
+            onTap = () => onSeamGap(1, gapInBar);
+          } else if (
+            onSeamGap &&
+            seamLeftAt &&
+            seamLeftAt.li === li &&
+            seamLeftAt.bi === bi &&
+            gapInBar < layout.bars[bi].words.length
+          ) {
+            // Left side of the selected seam: the words after this gap
+            // move down across it. The gap after the last word is the
+            // seam itself.
+            onTap = () => onSeamGap(-1, layout.bars[bi].words.length - gapInBar);
           }
-          const gap = layout.bars[bi].start + gapInBar;
-          if (gap === layout.bars[selBreak].start) return null;
+          if (!onTap) return null;
+          const isBreak = selBreak !== null && selBreak > 0;
           return (
             <button
               type="button"
-              onClick={() =>
-                applyToLine(li, (l) => setWordBoundary(l, selBreak, gap))
+              onClick={onTap}
+              title={isBreak ? "Move the bar break here" : "Move the seam here"}
+              aria-label={
+                isBreak ? "Move the bar break here" : "Move the seam here"
               }
-              title="Move the bar break here"
-              aria-label="Move the bar break here"
               className="group relative z-10 -mx-1.5 flex w-6 shrink-0 items-center justify-center self-stretch"
             >
               <span className="h-4 w-px bg-blue-300 transition-all group-hover:w-1 group-hover:bg-blue-400" />
