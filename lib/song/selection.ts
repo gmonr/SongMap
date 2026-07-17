@@ -5,18 +5,19 @@ export type ReshapeSelection =
   | { kind: "chord"; sectionId: string; li: number; bi: number; ci: number }
   | { kind: "phrase"; sectionId: string; li: number; bar: number }
   | { kind: "bar"; sectionId: string; li: number; bi: number }
-  /** The │ break between bars `boundary - 1` and `boundary` of a line. */
+  /** The │ break between bars `boundary - 1` and `boundary` of a line.
+   *  `boundary` 0 is the seam before the row's first bar, whose left
+   *  neighbor is the previous row's — or previous section's — last bar
+   *  (see barBeforeSeam / moveSeamWord in lyrics.ts). */
   | { kind: "break"; sectionId: string; li: number; boundary: number }
-  /** Word `word` of bar `bar`'s phrase, for highlighting it. `char`
-   *  narrows the highlight to the syllable starting at that character
-   *  (0/absent = the whole word). */
+  /** Word `word` of bar `bar`'s phrase, picked up to toggle highlights on
+   *  it (whole word or letter ranges — see marks.ts). */
   | {
       kind: "word";
       sectionId: string;
       li: number;
       bar: number;
       word: number;
-      char?: number;
     };
 
 /** Mirror of ModeToggle's ReshapeMode, kept here so lib code stays pure. */

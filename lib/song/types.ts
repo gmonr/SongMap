@@ -22,20 +22,26 @@ export interface Bar {
 }
 
 /**
- * Highlight one word (or the syllable starting mid-word) of a lyric
- * phrase, so the singer can mentally tie it to the bar's chords/beats.
- * Purely visual — no beat is stored, and playback ignores marks. Within a
- * span, marks are sorted by (word, char) and unique.
+ * Highlight one word — or a [char, end) slice of it, a syllable — of a
+ * lyric phrase, so the singer can mentally tie it to the bar's
+ * chords/beats. Purely visual — no beat is stored, and playback ignores
+ * marks. Within a span, marks are sorted by (word, char) and unique.
  */
 export interface WordMark {
   /** Index into the phrase's words (whitespace-split, see lyricWords). */
   word: number;
   /**
    * Character offset within the word where the highlight starts
-   * (0/absent = the whole word). Lets a highlight land mid-word:
-   * "so·ñado" marked at char 2 highlights "ñado".
+   * (0/absent = the word's start). Lets a highlight land mid-word:
+   * "so·ñado" marked at char 2 highlights from the "ñ".
    */
   char?: number;
+  /**
+   * Exclusive character offset where the highlight stops (absent = the
+   * word's end), so an inner syllable is representable: char 2 + end 4
+   * on "soñado" highlights just "ña".
+   */
+  end?: number;
 }
 
 /** A lyric phrase aligned to a bar (by index within its line). */

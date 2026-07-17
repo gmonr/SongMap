@@ -11,22 +11,32 @@
  * taps from dirtying the save state).
  */
 import { fromDense, toDense } from "./lines";
-import type { Line, WordMark } from "./types";
+import type { Line, SongData, WordMark } from "./types";
 
 /**
  * Highlights that survive retyping a phrase into `words` (same word count —
  * callers enforce that): word-start marks always do, syllable marks only
  * while their char offset still falls inside the (possibly shorter) new
- * word. Undefined when none survive.
+ * word. An `end` past the new word's length falls back to "the word's
+ * end". Undefined when none survive.
  */
 export function marksAfterRetype(
   marks: WordMark[] | undefined,
   words: string[]
 ): WordMark[] | undefined {
   if (!marks) return undefined;
-  const kept = marks.filter(
-    (m) => m.word < words.length && (m.char ?? 0) < words[m.word].length
-  );
+  const kept: WordMark[] = [];
+  for (const m of marks) {
+    if (m.word >= words.length) continue;
+    const len = words[m.word].length;
+    if ((m.char ?? 0) >= len) continue;
+    if (m.end !== undefined && m.end > len) {
+      const { end: _dropped, ...rest } = m;
+      kept.push(rest);
+    } else {
+      kept.push(m);
+    }
+  }
   return kept.length > 0 ? kept : undefined;
 }
 
@@ -134,6 +144,133 @@ export function setBarLyric(line: Line, bar: number, text: string): Line {
       : undefined,
   };
   return fromDense(cells);
+}
+
+/** A bar's song-wide address, for the seam ops that cross row/section
+ *  boundaries. */
+export interface SeamBar {
+  sectionId: string;
+  li: number;
+  bi: number;
+}
+
+/**
+ * The bar just before the seam at the start of line `li` of section
+ * `sectionId`: the last bar of the nearest earlier line that has any bars,
+ * scanning up through the section and then through earlier sections in
+ * `order` (the reshape view's display order). Null when no bar precedes
+ * the seam anywhere in the song.
+ */
+export function barBeforeSeam(
+  data: SongData,
+  order: string[],
+  sectionId: string,
+  li: number
+): SeamBar | null {
+  const lastBarUpTo = (id: string, fromLine: number): SeamBar | null => {
+    const lines = data.sections[id]?.lines ?? [];
+    for (let l = Math.min(fromLine, lines.length - 1); l >= 0; l--) {
+      const bars = lines[l].bars;
+      if (bars.length > 0) {
+        return { sectionId: id, li: l, bi: bars.length - 1 };
+      }
+    }
+    return null;
+  };
+  const inSection = lastBarUpTo(sectionId, li - 1);
+  if (inSection) return inSection;
+  for (let s = order.indexOf(sectionId) - 1; s >= 0; s--) {
+    const before = lastBarUpTo(order[s], Infinity);
+    if (before) return before;
+  }
+  return null;
+}
+
+/**
+ * Move one word across the seam at the start of line `li` of section
+ * `sectionId` — the bar boundary rendered before the row's first bar.
+ * Lyrics are a song-wide continuous string, so the word transfers between
+ * the two bars adjacent to the seam even when they live in different rows
+ * or different sections: dir -1 sends the left bar's last word rightward
+ * into the row's first bar, dir 1 sends that bar's first word leftward.
+ * Highlights travel with their word. Same-reference no-op when the row
+ * doesn't exist, nothing precedes the seam, or the donor bar has no words.
+ */
+export function moveSeamWord(
+  data: SongData,
+  order: string[],
+  sectionId: string,
+  li: number,
+  dir: -1 | 1
+): SongData {
+  const rightLine = data.sections[sectionId]?.lines[li];
+  if (!rightLine || rightLine.bars.length === 0) return data;
+  const left = barBeforeSeam(data, order, sectionId, li);
+  if (!left) return data;
+
+  const leftLine = data.sections[left.sectionId].lines[left.li];
+  const leftCells = toDense(leftLine);
+  const rightCells = toDense(rightLine);
+  const lc = leftCells[left.bi];
+  const rc = rightCells[0];
+  const leftWords = lyricWords(lc.lyric);
+  const rightWords = lyricWords(rc.lyric);
+
+  if (dir === -1) {
+    if (leftWords.length === 0) return data;
+    const movedIdx = leftWords.length - 1;
+    const keptLeft = (lc.marks ?? []).filter((m) => m.word < movedIdx);
+    const marks = [
+      ...(lc.marks ?? [])
+        .filter((m) => m.word === movedIdx)
+        .map((m) => ({ ...m, word: 0 })),
+      ...(rc.marks ?? []).map((m) => ({ ...m, word: m.word + 1 })),
+    ];
+    leftCells[left.bi] = {
+      ...lc,
+      lyric: leftWords.slice(0, movedIdx).join(" "),
+      marks: keptLeft.length > 0 ? keptLeft : undefined,
+    };
+    rightCells[0] = {
+      ...rc,
+      lyric: [leftWords[movedIdx], ...rightWords].join(" "),
+      marks: marks.length > 0 ? marks : undefined,
+    };
+  } else {
+    if (rightWords.length === 0) return data;
+    const marks = [
+      ...(lc.marks ?? []),
+      ...(rc.marks ?? [])
+        .filter((m) => m.word === 0)
+        .map((m) => ({ ...m, word: leftWords.length })),
+    ];
+    const keptRight = (rc.marks ?? [])
+      .filter((m) => m.word > 0)
+      .map((m) => ({ ...m, word: m.word - 1 }));
+    leftCells[left.bi] = {
+      ...lc,
+      lyric: [...leftWords, rightWords[0]].join(" "),
+      marks: marks.length > 0 ? marks : undefined,
+    };
+    rightCells[0] = {
+      ...rc,
+      lyric: rightWords.slice(1).join(" "),
+      marks: keptRight.length > 0 ? keptRight : undefined,
+    };
+  }
+
+  // Rebuild the touched line(s) — sequential so a same-section pair (a
+  // seam between two rows of one section) stacks both line replacements.
+  const sections = { ...data.sections };
+  const setLine = (id: string, l: number, line: Line) => {
+    sections[id] = {
+      ...sections[id],
+      lines: sections[id].lines.map((x, i) => (i === l ? line : x)),
+    };
+  };
+  setLine(left.sectionId, left.li, fromDense(leftCells));
+  setLine(sectionId, li, fromDense(rightCells));
+  return { ...data, sections };
 }
 
 /**

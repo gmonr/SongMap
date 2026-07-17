@@ -1,28 +1,31 @@
 "use client";
 
+import { sectionColor } from "@/lib/song/colors";
 import { lineWordLayout, setWordBoundary } from "@/lib/song/lyrics";
+import { wordIntervals, wordRuns } from "@/lib/song/marks";
 import { reshapeBarDomId } from "@/lib/song/selection";
 import type { Line, SectionDef } from "@/lib/song/types";
 import type { ReshapeSelection } from "./ReshapeView";
 
 /**
- * Lyrics mode: redistribute a row's words across its bars without retyping.
- * Each bar shows its chord(s) above its words. Two selectable things:
+ * Lyrics mode: redistribute the song's words across its bars without
+ * retyping. Each bar shows its chord(s) above its words. Selectable things:
  *
  * - The │ break between two bars: tap to pick it up, then ◀ ▶ in the docked
  *   SelectionBar move it one word at a time, or tap one of the word gaps
  *   that light up (only the two bars the break sits between) to place it
  *   there exactly. One break, one explicit target — a gap tap can never
  *   surprise by folding words the other way.
+ * - The seam at the start of a row (boundary 0): same gesture, but its left
+ *   neighbor is the previous row's — or previous section's — last bar, so
+ *   ◀ ▶ walk words across rows and sections. Lyrics are a song-wide
+ *   continuous string; rows and sections just partition it.
  * - A bar's chord header: tap to pick up its whole phrase; ◀ ▶ shift it a
  *   bar at a time (occupied neighbors ripple into the row's first empty
  *   bar) and ✎ retypes its words.
- * - A word chip: tap to pick the word up, then highlight it (or one of its
- *   syllables) with the ☆ toggle in the SelectionBar. Highlighted words
- *   show a dot and render bold.
- *
- * Word moves are row-local: to move words between rows, merge the rows in
- * Rows mode first.
+ * - A word chip: tap to pick the word up, then toggle highlights on it in
+ *   the SelectionBar. Chips render highlights exactly as the song map does
+ *   (bold, section accent).
  */
 export function LyricsSection({
   def,
@@ -30,13 +33,18 @@ export function LyricsSection({
   apply,
   sel,
   onSelect,
+  hasPrecedingBars,
 }: {
   def: SectionDef;
   sectionId: string;
   apply: (fn: (lines: Line[]) => Line[]) => void;
   sel: ReshapeSelection | null;
   onSelect: (sel: ReshapeSelection | null) => void;
+  /** Whether any bar exists before this section in the song's display
+   *  order, i.e. whether the first row's leading seam has a left side. */
+  hasPrecedingBars: boolean;
 }) {
+  const color = sectionColor(def.color);
   const applyToLine = (li: number, fn: (line: Line) => Line) =>
     apply((lines) => {
       const next = fn(lines[li]);
@@ -44,6 +52,11 @@ export function LyricsSection({
         ? lines
         : lines.map((l, i) => (i === li ? next : l));
     });
+
+  // The seam before row `li` exists when some bar precedes it anywhere.
+  const seamBefore = (li: number) =>
+    hasPrecedingBars ||
+    def.lines.slice(0, li).some((l) => l.bars.length > 0);
 
   return (
     <div className="space-y-2">
@@ -54,12 +67,18 @@ export function LyricsSection({
             ? sel.boundary
             : null;
 
-        // Placement slots for the picked-up break: every word gap in the two
-        // bars it sits between, except where it already is. Slim 1px seam
-        // with a ~24px invisible hit box (wider than its layout space via
-        // negative margins, floating above the inert word chips beside it).
+        // Placement slots for a picked-up mid-row break: every word gap in
+        // the two bars it sits between, except where it already is. (The
+        // row-start seam moves via ◀ ▶ only — its left bar renders in
+        // another row or section.) Slim 1px seam with a ~24px invisible
+        // hit box (wider than its layout space via negative margins,
+        // floating above the inert word chips beside it).
         const gapButton = (bi: number, gapInBar: number) => {
-          if (selBreak === null || (bi !== selBreak - 1 && bi !== selBreak)) {
+          if (
+            selBreak === null ||
+            selBreak === 0 ||
+            (bi !== selBreak - 1 && bi !== selBreak)
+          ) {
             return null;
           }
           const gap = layout.bars[bi].start + gapInBar;
@@ -79,13 +98,47 @@ export function LyricsSection({
           );
         };
 
+        // The │ boundary before bar `bi`: a mid-row bar break, or (bi 0)
+        // the row's leading seam. Same tap target, same selection kind.
+        const breakButton = (bi: number) => (
+          <button
+            type="button"
+            onClick={() =>
+              onSelect(
+                selBreak === bi
+                  ? null
+                  : { kind: "break", sectionId, li, boundary: bi }
+              )
+            }
+            title={
+              bi === 0
+                ? "Pick up this row seam (moves words across rows)"
+                : "Pick up this bar break"
+            }
+            aria-label={
+              bi === 0
+                ? "Pick up the seam before this row"
+                : `Pick up the bar break before bar ${bi + 1}`
+            }
+            aria-pressed={selBreak === bi}
+            className="group relative z-10 -mx-1 flex w-6 shrink-0 justify-center self-stretch"
+          >
+            <span
+              className={`self-stretch rounded transition-all ${
+                selBreak === bi
+                  ? "w-1 bg-blue-500"
+                  : bi === 0
+                    ? "w-0.5 border-l border-dashed border-slate-400 group-hover:border-blue-400"
+                    : "w-0.5 bg-slate-300 group-hover:bg-blue-400"
+              }`}
+            />
+          </button>
+        );
+
         return (
           <div key={li} className="flex flex-wrap items-stretch gap-y-2">
             {layout.bars.map((b, bi) => {
               const span = line.lyrics.find((s) => s.bar === bi);
-              const markedWords = new Set(
-                span?.marks?.map((m) => m.word) ?? []
-              );
               const selWord =
                 sel?.kind === "word" &&
                 sel.sectionId === sectionId &&
@@ -110,32 +163,7 @@ export function LyricsSection({
                   id={reshapeBarDomId({ sectionId, li, bi })}
                   className="flex max-w-full items-stretch"
                 >
-                  {bi > 0 && (
-                    // The bar break itself: a tap target with a ~24px
-                    // invisible hit box around the slim visible divider.
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onSelect(
-                          selBreak === bi
-                            ? null
-                            : { kind: "break", sectionId, li, boundary: bi }
-                        )
-                      }
-                      title="Pick up this bar break"
-                      aria-label={`Pick up the bar break before bar ${bi + 1}`}
-                      aria-pressed={selBreak === bi}
-                      className="group relative z-10 -mx-1 flex w-6 shrink-0 justify-center self-stretch"
-                    >
-                      <span
-                        className={`self-stretch rounded transition-all ${
-                          selBreak === bi
-                            ? "w-1 bg-blue-500"
-                            : "w-0.5 bg-slate-300 group-hover:bg-blue-400"
-                        }`}
-                      />
-                    </button>
-                  )}
+                  {(bi > 0 || seamBefore(li)) && breakButton(bi)}
                   <div
                     className={`flex min-w-0 flex-col gap-0.5 rounded-md px-1 py-0.5 ${
                       selected ? "bg-blue-50 ring-1 ring-blue-300" : ""
@@ -189,15 +217,27 @@ export function LyricsSection({
                                   selWord === wi
                                     ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300"
                                     : "border-slate-200 bg-white hover:border-blue-300"
-                                } ${markedWords.has(wi) ? "font-semibold" : ""}`}
+                                }`}
                               >
-                                {w}
-                                {markedWords.has(wi) && (
-                                  <span
-                                    className="h-1.5 w-1.5 rounded-full bg-blue-500"
-                                    aria-hidden
-                                  />
-                                )}
+                                {/* WYSIWYG: highlights render here exactly
+                                    as the song map shows them. */}
+                                <span>
+                                  {wordRuns(
+                                    w,
+                                    wordIntervals(span?.marks, wi, w.length)
+                                  ).map((run, ri) =>
+                                    run.emph ? (
+                                      <b
+                                        key={ri}
+                                        className={`font-bold ${color.label}`}
+                                      >
+                                        {run.text}
+                                      </b>
+                                    ) : (
+                                      <span key={ri}>{run.text}</span>
+                                    )
+                                  )}
+                                </span>
                               </button>
                               {gapButton(bi, wi + 1)}
                             </span>
