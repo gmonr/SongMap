@@ -99,6 +99,10 @@ export interface SongRow {
   capo: number | null;
   data: SongData;
   source_url: string | null;
+  /** Linked Spotify track for verification playback (bare track id). */
+  spotify_track_id?: string | null;
+  /** Recording-sync state; see lib/spotify/sync.ts SpotifySyncData. */
+  spotify_sync?: unknown;
   created_at?: string;
   updated_at?: string;
 }

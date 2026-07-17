@@ -245,8 +245,8 @@ numbers are always computed from `key` + chord symbol at render time.
 
 1. `npm install`
 2. Create a [Supabase](https://supabase.com) project and run the SQL in
-   `supabase/migrations/0001_create_songs.sql` (SQL editor or
-   `supabase db push`). Row-Level Security scopes every row to its owner.
+   `supabase/migrations/` in order (SQL editor or `supabase db push`).
+   Row-Level Security scopes every row to its owner.
 3. Copy `.env.example` to `.env.local` and fill in
    `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 4. `npm run dev` and sign in with a magic link.
@@ -254,6 +254,29 @@ numbers are always computed from `key` + chord symbol at render time.
 Without `.env.local` the app runs in **demo mode**: the bundled demo song
 (`/songs/demo`) shows the full song-map view, but nothing can be created or
 saved.
+
+### Spotify verification mode (`NEXT_PUBLIC_SPOTIFY_CLIENT_ID`, optional)
+
+The song map can play the real recording from any bar you tap, to verify
+the measures/chords/lyrics against the record — a **♫ Spotify** button next
+to ▶ Play. To enable it:
+
+1. Create an app at the
+   [Spotify developer dashboard](https://developer.spotify.com/dashboard)
+   and add `<your-origin>/api/spotify/callback` (e.g.
+   `http://localhost:3000/api/spotify/callback`) as a Redirect URI.
+2. Set `NEXT_PUBLIC_SPOTIFY_CLIENT_ID` to the app's Client ID (PKCE flow —
+   no client secret) and apply `supabase/migrations/0002_add_spotify.sql`.
+
+How it works: link the song to a track (search + confirm), then tap bars to
+seek. Audio plays on whatever Spotify app/device you have open (Spotify
+Connect); controlling playback requires **Spotify Premium**, and dev-mode
+Spotify apps allow up to 25 allowlisted users. Bar positions start as a
+BPM-based estimate counted from 0:00, so use **calibrate** in the transport
+to stamp where bar 1's downbeat actually falls in the recording (tap on the
+downbeat, then nudge ±ms until it locks in). Extra anchors at later bars
+correct tempo drift; with two or more, the tempo comes from the anchors
+themselves. The playhead follows the recording across the map as it plays.
 
 ### Ultimate Guitar search (`UG_PROXY_TEMPLATE`, optional)
 

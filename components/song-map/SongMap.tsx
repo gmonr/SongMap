@@ -10,9 +10,20 @@ import {
   shiftKey,
   type Notation,
 } from "@/lib/song/theory";
+import { clearSpotifyLink } from "@/app/songs/spotify-actions";
+import { barIndexAt } from "@/lib/song/playback";
+import { isSpotifyConfigured } from "@/lib/spotify/env";
+import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { PlaybackBar } from "./PlaybackBar";
 import { SectionCard } from "./SectionCard";
+import { SpotifyBar } from "./SpotifyBar";
+import { SpotifyLinkDialog } from "./SpotifyLinkDialog";
 import { usePlayback } from "./usePlayback";
+import { useSpotifyPlayback } from "./useSpotifyPlayback";
+
+/** Which engine the docked transport is driving. */
+type PlaybackSource = null | "synth" | "spotify";
 
 const NOTATIONS: { value: Notation; label: string; title: string }[] = [
   { value: "letters", label: "C", title: "Chord letters" },
@@ -42,8 +53,40 @@ export function SongMap({
   const [displayKey, setDisplayKey] = useState(songKey);
   const [notation, setNotation] = useState<Notation>("letters");
   const [showLyrics, setShowLyrics] = useState(true);
-  const [playbackOpen, setPlaybackOpen] = useState(false);
+  const [source, setSource] = useState<PlaybackSource>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  // The Spotify link, locally editable so linking/unlinking applies without
+  // waiting for a server re-render of the song row.
+  const [link, setLink] = useState<{
+    trackId: string | null;
+    sync: SpotifySyncData | null;
+  }>(() => ({
+    trackId: song.spotify_track_id ?? null,
+    sync: song.spotify_sync ? normalizeSync(song.spotify_sync) : null,
+  }));
   const pb = usePlayback(song, displayKey);
+  const sp = useSpotifyPlayback(
+    song,
+    link.trackId,
+    link.sync,
+    source === "spotify"
+  );
+  // Spotify mode needs somewhere to save the link/anchors.
+  const spotifyEnabled = isSpotifyConfigured && isSupabaseConfigured;
+
+  const openSynth = () => {
+    if (source === "spotify") sp.stop();
+    setSource("synth");
+  };
+  const openSpotify = () => {
+    if (source === "synth") pb.stop();
+    setSource("spotify");
+  };
+  const closePlayback = () => {
+    if (source === "synth") pb.stop();
+    if (source === "spotify") sp.stop();
+    setSource(null);
+  };
 
   const { tonic: displayTonic, minor } = parseKey(displayKey);
 
@@ -172,13 +215,27 @@ export function SongMap({
         <button
           type="button"
           onClick={() => {
-            setPlaybackOpen(true);
+            openSynth();
             if (pb.status === "stopped") pb.play();
           }}
           className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
         >
           ▶ Play
         </button>
+
+        {spotifyEnabled && (
+          <button
+            type="button"
+            title="Play the real recording to verify the map"
+            onClick={() => {
+              if (link.trackId) openSpotify();
+              else setLinkDialogOpen(true);
+            }}
+            className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
+          >
+            ♫ Spotify
+          </button>
+        )}
 
         {practiceHref && (
           <Link
@@ -229,27 +286,41 @@ export function SongMap({
                 ? { li: focusAnchor.li, bi: focusAnchor.bi }
                 : undefined
             }
-            playheadBar={
-              pb.current && pb.current.arrIdx === i
-                ? { li: pb.current.li, bi: pb.current.bi }
-                : undefined
-            }
+            playheadBar={(() => {
+              const cur = source === "spotify" ? sp.current : pb.current;
+              return cur && cur.arrIdx === i
+                ? { li: cur.li, bi: cur.bi }
+                : undefined;
+            })()}
             onPlayFromHere={
-              playbackOpen
-                ? () => pb.playFromItem(i)
-                : undefined
+              source === "spotify"
+                ? () => sp.playFromItem(i)
+                : source === "synth"
+                  ? () => pb.playFromItem(i)
+                  : undefined
             }
             onChordTap={(li, bi, ci) => {
-              setPlaybackOpen(true);
-              pb.playFromChord(i, li, bi, ci);
+              if (source === "spotify") {
+                // Calibrating: a tap ARMS the bar for anchoring instead of
+                // seeking, so you can pick a target without losing position.
+                if (sp.calibrating) {
+                  const idx = barIndexAt(sp.timeline, i, li, bi);
+                  if (idx !== -1) sp.armBeat(sp.timeline.bars[idx].startBeat);
+                } else {
+                  sp.playFromChord(i, li, bi, ci);
+                }
+              } else {
+                openSynth();
+                pb.playFromChord(i, li, bi, ci);
+              }
             }}
           />
         );
       })}
 
       {/* Clearance so the docked transport never hides the last section. */}
-      {playbackOpen && <div className="h-28" aria-hidden />}
-      {playbackOpen && (
+      {source !== null && <div className="h-28" aria-hidden />}
+      {source === "synth" && (
         <PlaybackBar
           pb={pb}
           sectionLabel={
@@ -257,9 +328,35 @@ export function SongMap({
               ? song.data.arrangement[pb.current.arrIdx]?.instanceLabel ?? null
               : null
           }
-          onClose={() => {
-            pb.stop();
-            setPlaybackOpen(false);
+          onClose={closePlayback}
+        />
+      )}
+      {source === "spotify" && (
+        <SpotifyBar
+          sp={sp}
+          song={song}
+          onClose={closePlayback}
+          onUnlink={() => {
+            if (!window.confirm("Unlink this track and delete its anchors?")) {
+              return;
+            }
+            closePlayback();
+            setLink({ trackId: null, sync: null });
+            void clearSpotifyLink(song.id);
+          }}
+        />
+      )}
+
+      {linkDialogOpen && (
+        <SpotifyLinkDialog
+          songId={song.id}
+          title={song.title}
+          artist={song.artist}
+          onClose={() => setLinkDialogOpen(false)}
+          onLinked={(trackId, sync) => {
+            setLink({ trackId, sync });
+            setLinkDialogOpen(false);
+            openSpotify();
           }}
         />
       )}
