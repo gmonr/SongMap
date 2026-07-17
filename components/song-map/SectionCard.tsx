@@ -9,8 +9,9 @@ import { BarCell } from "./BarCell";
 /**
  * A color-coded section card: label header, chord grid (equal-width bar
  * cells wrapping at 4 on mobile / 8 on desktop) with lyrics aligned under
- * each bar. Instances marked `sameChordsAs` collapse to a one-line
- * "chords same as X" reference, expandable on demand.
+ * each bar. Instances marked `sameChordsAs` note the reference in their
+ * header and can be collapsed to that one line, but render expanded by
+ * default — the map's point is reading the whole song, chords and lyrics.
  */
 export function SectionCard({
   def,
@@ -47,7 +48,7 @@ export function SectionCard({
   /** Playback: start playing from a tapped chord (replaces the popover). */
   onChordTap?: (li: number, bi: number, ci: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(!item.sameChordsAs || !!focusBar);
+  const [expanded, setExpanded] = useState(true);
   const color = sectionColor(def.color);
   const sectionRef = useRef<HTMLElement>(null);
 

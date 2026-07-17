@@ -56,8 +56,8 @@ export function SongMap({
   }
 
   // Landing back from reshape: flash the bar in the section's first
-  // full instance (same-as instances render collapsed — fall back to one
-  // only when no full instance exists, and SectionCard expands it).
+  // full instance (prefer it over same-as instances, which are the
+  // derived copies).
   const focusAnchor = parseFocus(focus);
   let focusIndex = -1;
   if (focusAnchor) {

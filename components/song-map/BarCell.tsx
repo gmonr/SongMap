@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { markRuns } from "@/lib/song/marks";
 import type { Bar, LyricSpan } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
@@ -70,6 +70,13 @@ export function BarCell({
     if (flash) flashRef.current?.scrollIntoView({ block: "center" });
   }, [flash]);
 
+  // The flash animation's fill-mode keeps its final keyframe (transparent
+  // ring, white bg) applied as long as the class is on the element, and
+  // animated properties override normal ones — which would blank out the
+  // .bar-playhead ring whenever playback later reaches this bar. Drop the
+  // class the moment the animation completes.
+  const [flashDone, setFlashDone] = useState(false);
+
   // Follow the playhead, but only scroll when the bar leaves the middle
   // band of the viewport — centering on every bar would judder constantly.
   useEffect(() => {
@@ -107,8 +114,11 @@ export function BarCell({
   return (
     <div ref={flashRef} className="flex min-w-0 flex-col">
       <div
+        onAnimationEnd={(e) => {
+          if (e.animationName === "bar-flash") setFlashDone(true);
+        }}
         className={`flex items-stretch justify-around rounded-md border ${borderColor} bg-white px-1 py-1.5 ${
-          flash ? "bar-flash" : ""
+          flash && !flashDone ? "bar-flash" : ""
         } ${playhead ? "bar-playhead" : ""}`}
       >
         {bar.chords.map((chord, i) => (
