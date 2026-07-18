@@ -40,6 +40,55 @@ function newLine(beats: number, bars = 4): Line {
 const inputCls =
   "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none";
 
+/**
+ * A clamped number input that stays easy to retype on mobile: focusing
+ * selects the whole value so the next digit replaces it, and the box may
+ * be emptied while editing — the model keeps its last valid value and the
+ * field snaps back to it on blur instead of forcing a "1" into the way.
+ */
+function NumberField({
+  value,
+  min,
+  max,
+  onCommit,
+  className,
+  ...rest
+}: {
+  value: number;
+  min: number;
+  max?: number;
+  onCommit: (n: number) => void;
+  className?: string;
+} & Pick<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "title" | "aria-label"
+>) {
+  // The in-progress text while focused (may be ""); null shows the model.
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      value={draft ?? value}
+      onFocus={(e) => {
+        setDraft(String(value));
+        e.currentTarget.select();
+      }}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = parseInt(e.target.value, 10);
+        if (!Number.isNaN(n)) {
+          onCommit(Math.max(min, max !== undefined ? Math.min(max, n) : n));
+        }
+      }}
+      onBlur={() => setDraft(null)}
+      className={className}
+      {...rest}
+    />
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 function BarEditor({
@@ -103,16 +152,11 @@ function BarEditor({
             placeholder="C"
             className={`${inputCls} w-full min-w-0 font-semibold`}
           />
-          <input
-            type="number"
+          <NumberField
+            value={chord.beats}
             min={1}
             max={maxBeats}
-            value={chord.beats}
-            onChange={(e) =>
-              setChord(i, {
-                beats: Math.max(1, parseInt(e.target.value || "1", 10)),
-              })
-            }
+            onCommit={(n) => setChord(i, { beats: n })}
             title="Beats"
             className={`${inputCls} w-12 text-center`}
           />
@@ -472,6 +516,7 @@ export function SongEditor({ song }: { song: SongRow }) {
               type="number"
               value={tempo}
               onChange={(e) => setTempo(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
               className={`${inputCls} w-full`}
             />
           </label>
@@ -482,6 +527,7 @@ export function SongEditor({ song }: { song: SongRow }) {
               min={0}
               value={capo}
               onChange={(e) => setCapo(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
               className={`${inputCls} w-full`}
             />
           </label>
@@ -557,14 +603,12 @@ export function SongEditor({ song }: { song: SongRow }) {
               />
               <label className="flex items-center gap-1 text-xs text-slate-500">
                 ×
-                <input
-                  type="number"
-                  min={1}
+                <NumberField
                   value={item.repeat ?? 1}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value || "1", 10);
-                    setArrangement(i, { repeat: n > 1 ? n : undefined });
-                  }}
+                  min={1}
+                  onCommit={(n) =>
+                    setArrangement(i, { repeat: n > 1 ? n : undefined })
+                  }
                   className={`${inputCls} w-14`}
                   aria-label="Repeat count"
                 />

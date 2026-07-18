@@ -5,6 +5,7 @@ import {
   barIndexAt,
   buildTimeline,
   firstBarOfItem,
+  REWIND_PREV_WINDOW_MS,
   type Timeline,
   type TimelineBar,
 } from "@/lib/song/playback";
@@ -77,6 +78,8 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
   // Where the last seek landed: skips during a count-in (currentIdx is
   // null until the first bar sounds) still step from the right section.
   const anchorArr = useRef(-1);
+  // When the rewind button was last pressed (restart vs step-back).
+  const lastRewind = useRef(0);
   const live = useRef({ tempo, loop, clickOn, chordsOn, displayKey });
   live.current = { tempo, loop, clickOn, chordsOn, displayKey };
   const songKey = song.key || "C";
@@ -160,6 +163,18 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
       currentIdx !== null
         ? timeline.bars[currentIdx]?.arrIdx ?? anchorArr.current
         : anchorArr.current;
+    if (dir === -1) {
+      const now = Date.now();
+      const again = now - lastRewind.current < REWIND_PREV_WINDOW_MS;
+      lastRewind.current = now;
+      // First rewind restarts the current section; only a quick second
+      // press (or being already at the section top) steps further back.
+      const firstIdx = from >= 0 ? firstBarOfItem(timeline, from) : -1;
+      if (!again && firstIdx !== -1 && currentIdx !== null && currentIdx > firstIdx) {
+        startAt(firstIdx);
+        return;
+      }
+    }
     const arrCount = song.data.arrangement.length;
     let arrIdx = from + dir;
     // Skip arrangement items with no bars (empty/missing sections).

@@ -96,6 +96,13 @@ export function firstBarOfItem(t: Timeline, arrIdx: number): number {
 }
 
 /**
+ * Rewind behaves like a standard transport: one press restarts the current
+ * section; pressed again within this window (or already at the section
+ * top) it steps back to the previous section.
+ */
+export const REWIND_PREV_WINDOW_MS = 2500;
+
+/**
  * Timeline index of the bar at (arrIdx, li, bi) — first repeat pass — or -1
  * when no such bar exists. This is how a tap on a rendered bar (which knows
  * its section-relative indexes) becomes a playback position.
