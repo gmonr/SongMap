@@ -181,8 +181,9 @@ closed in one pass:
 - **Word/syllable highlights** — in reshape's Lyrics mode, tap a word to
   open a WYSIWYG picker in the selection bar: the word renders exactly as
   the song map will show it (highlights bold in the section's accent
-  color), tap letter gaps to split off syllables and tap the letters to
-  toggle their highlight — inner syllables included ("so**ña**do"), since
+  color), tap letter gaps to split off syllables and tap the wide bar over
+  a segment (or its letters) to toggle its highlight — inner syllables
+  included ("so**ña**do"), since
   each mark stores a `[char, end)` range. **☆ highlight** still toggles
   the whole word, and the word pills in Lyrics mode render highlights the
   same way the map does. Highlights are the singer's own landmarks for

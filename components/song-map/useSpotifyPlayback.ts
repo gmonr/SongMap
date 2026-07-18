@@ -6,6 +6,7 @@ import {
   barIndexAt,
   buildTimeline,
   firstBarOfItem,
+  REWIND_PREV_WINDOW_MS,
   type Timeline,
   type TimelineBar,
 } from "@/lib/song/playback";
@@ -79,6 +80,10 @@ const TICK_MS = 150;
 /** Lead-in before an armed bar so the ear can lock onto its downbeat. */
 const PREROLL_MS = 3000;
 const SAVE_DEBOUNCE_MS = 800;
+/** After a seek, distrust polls this long unless they agree with it. */
+const SEEK_GRACE_MS = 2500;
+/** How far a poll may sit from the seek target and still count as "agrees". */
+const SEEK_TOLERANCE_MS = 1500;
 
 /**
  * Spotify verification playback for one song: seeks the linked recording to
@@ -132,6 +137,11 @@ export function useSpotifyPlayback(
     ourTrack: boolean;
   } | null>(null);
 
+  /** The last seek command, while polls may still report pre-seek state. */
+  const seekGuard = useRef<{ targetMs: number; at: number } | null>(null);
+  // When the rewind button was last pressed (restart vs step-back).
+  const lastRewind = useRef(0);
+
   // Latest values for the timers/commands without re-arming them.
   const live = useRef({ sync, deviceId, trackId, tempo, status });
   live.current = { sync, deviceId, trackId, tempo, status };
@@ -173,6 +183,24 @@ export function useSpotifyPlayback(
     state: Awaited<ReturnType<typeof getPlayerState>>
   ): void => {
     const ours = state !== null && state.trackId === live.current.trackId;
+    // Polls race seeks: a request in flight when the seek was issued (or
+    // Spotify's own reporting lag) still carries the pre-seek position and
+    // would snap the highlight back to the bars we just left. Until a poll
+    // agrees with the seek target, keep the optimistic estimate instead.
+    const guard = seekGuard.current;
+    if (guard) {
+      const age = performance.now() - guard.at;
+      if (age < SEEK_GRACE_MS) {
+        const expected = guard.targetMs + age;
+        if (
+          !ours ||
+          Math.abs(state.positionMs - expected) > SEEK_TOLERANCE_MS
+        ) {
+          return;
+        }
+      }
+      seekGuard.current = null;
+    }
     lastPoll.current = ours
       ? {
           positionMs: state.positionMs,
@@ -272,6 +300,19 @@ export function useSpotifyPlayback(
     }
   };
 
+  /** Optimistic playhead: snap the map to `ms` now and arm the seek guard
+   *  so stale polls can't drag it back while Spotify catches up. */
+  const assumeSeeked = (ms: number) => {
+    seekGuard.current = { targetMs: ms, at: performance.now() };
+    lastPoll.current = {
+      positionMs: ms,
+      at: performance.now(),
+      isPlaying: true,
+      ourTrack: true,
+    };
+    setStatus("playing");
+  };
+
   /** Start our track at `ms`, seeking in place when it's already up. */
   const startAtMs = async (ms: number): Promise<void> => {
     const id = live.current.trackId;
@@ -279,8 +320,10 @@ export function useSpotifyPlayback(
     const t = await token();
     if (!t) return;
     setError(null);
+    const p = lastPoll.current;
+    // Move the highlight before the network round-trip, not after it.
+    assumeSeeked(ms);
     try {
-      const p = lastPoll.current;
       if (p?.ourTrack) {
         // Already on our track: an in-place seek is faster than /play and
         // keeps the queue; resume if it was paused.
@@ -289,15 +332,10 @@ export function useSpotifyPlayback(
       } else {
         await playTrack(t, id, ms, live.current.deviceId ?? undefined);
       }
-      // Optimistic playhead so the map responds before the next poll.
-      lastPoll.current = {
-        positionMs: ms,
-        at: performance.now(),
-        isPlaying: true,
-        ourTrack: true,
-      };
-      setStatus("playing");
     } catch (e) {
+      // The command didn't land; let the next poll restore the truth.
+      seekGuard.current = null;
+      lastPoll.current = null;
       // No active device but exactly one is available: just use it.
       if (e instanceof SpotifyApiError && e.reason === "NO_ACTIVE_DEVICE") {
         const list = await refreshDevices();
@@ -305,13 +343,7 @@ export function useSpotifyPlayback(
           setDeviceId(list[0].id);
           try {
             await playTrack(t, id, ms, list[0].id);
-            lastPoll.current = {
-              positionMs: ms,
-              at: performance.now(),
-              isPlaying: true,
-              ourTrack: true,
-            };
-            setStatus("playing");
+            assumeSeeked(ms);
             return;
           } catch (retryErr) {
             fail(retryErr);
@@ -348,6 +380,7 @@ export function useSpotifyPlayback(
     if (!t) return;
     try {
       await pausePlayback(t);
+      seekGuard.current = null;
       const p = lastPoll.current;
       if (p?.ourTrack) {
         lastPoll.current = {
@@ -386,6 +419,7 @@ export function useSpotifyPlayback(
 
   const stop = () => {
     if (live.current.status === "playing") void pause();
+    seekGuard.current = null;
     lastPoll.current = null;
     setStatus("stopped");
     setCurrentIdx(null);
@@ -395,6 +429,18 @@ export function useSpotifyPlayback(
   const skipSection = (dir: -1 | 1) => {
     const fromArr =
       currentIdx !== null ? timeline.bars[currentIdx]?.arrIdx ?? -1 : -1;
+    if (dir === -1) {
+      const now = performance.now();
+      const again = now - lastRewind.current < REWIND_PREV_WINDOW_MS;
+      lastRewind.current = now;
+      // First rewind restarts the current section; only a quick second
+      // press (or being already at the section top) steps further back.
+      const firstIdx = fromArr >= 0 ? firstBarOfItem(timeline, fromArr) : -1;
+      if (!again && firstIdx !== -1 && currentIdx !== null && currentIdx > firstIdx) {
+        playFromItem(fromArr);
+        return;
+      }
+    }
     const arrCount = song.data.arrangement.length;
     let arrIdx = fromArr + dir;
     while (arrIdx >= 0 && arrIdx < arrCount) {

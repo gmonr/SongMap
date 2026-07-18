@@ -95,8 +95,8 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
       <b className="font-semibold text-slate-600">✎</b> retypes it). Tap a{" "}
       <b className="font-semibold text-slate-600">word</b> to highlight it on
       the song map: in the bottom bar, tap letter gaps to split off a
-      syllable and tap the letters to toggle their highlight — shown exactly
-      as the song map will render it.
+      syllable and tap the bar over a segment to toggle its highlight —
+      shown exactly as the song map will render it.
     </>
   ),
   chords: (
@@ -866,7 +866,7 @@ export function ReshapeView({
                 ? "◀ ▶ move words across the row boundary · gaps place it"
                 : "◀ ▶ move the break one word"
               : sel.kind === "word"
-                ? "tap letters to highlight · gaps split off syllables"
+                ? "tap the bar over a segment to highlight it · gaps split off syllables"
                 : "◀ ▶ shift it one bar"
       }
       canLeft={canMove(-1)}
