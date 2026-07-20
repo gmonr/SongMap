@@ -260,8 +260,11 @@ capability only) plus lyric-derived sync:
     copy says "rough — nudge to taste".
   - **Check synced lyrics** (reshape, Lyrics mode): offers to fill empty
     bars with the timed lines (one undoable step; existing lyrics are
-    never overwritten) and reports lines sung in a different bar than
-    they're placed.
+    never overwritten), lists lines sung in a different bar than they're
+    placed, and can **shift them to match** — each mismatched line's
+    words move rigidly to their sung bar (crossing rows where needed,
+    highlights traveling along, the stream never reordered), as one
+    undoable step.
   - Design note: lyric timing stays *derived* (`LyricSpan.bar` → beat →
     ms via the sync anchors) — no per-line timestamps are stored, so
     reshaping a row or nudging an anchor can never desync a second source

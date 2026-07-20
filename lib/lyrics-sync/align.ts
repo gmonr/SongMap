@@ -133,17 +133,40 @@ const NEAR = 1;
 const MISMATCH = -1;
 const GAP = -1;
 
+/** One matched word pair: song word `songIdx` sings LRC line `lineIdx`'s
+ *  word `wordInLine`. */
+export interface WordBinding {
+  songIdx: number;
+  lineIdx: number;
+  wordInLine: number;
+}
+
+export interface AlignResult {
+  lines: LineMatch[];
+  /** Every matched word pair, in stream order. */
+  bindings: WordBinding[];
+}
+
+/** Line-level view of alignWords, for callers that only need line stats. */
+export function alignLyrics(
+  songWords: SongWord[],
+  lrcLines: LrcLine[]
+): LineMatch[] {
+  return alignWords(songWords, lrcLines).lines;
+}
+
 /**
  * Global (Needleman–Wunsch) alignment of the song's word stream against the
  * LRC's word stream — monotonic by construction, with gaps absorbing
  * ad-libs the LRC has and the map doesn't (and vice versa: chords-only
  * intros). Typical sizes are a few hundred words a side, so the quadratic
- * table is trivial. Returns per-LRC-line binding stats.
+ * table is trivial. Returns per-LRC-line binding stats plus the word-level
+ * pairs (what the placement shift builds on).
  */
-export function alignLyrics(
+export function alignWords(
   songWords: SongWord[],
   lrcLines: LrcLine[]
-): LineMatch[] {
+): AlignResult {
   const lrcWords: { norm: string; lineIdx: number; wordInLine: number }[] = [];
   lrcLines.forEach((l, lineIdx) => {
     lyricWords(l.text).forEach((w, wordInLine) => {
@@ -165,7 +188,8 @@ export function alignLyrics(
   });
   const stats = lrcLines.map((_, i) => empty(i));
   for (const w of lrcWords) stats[w.lineIdx].lineWordCount++;
-  if (n === 0 || m === 0) return stats;
+  const bindings: WordBinding[] = [];
+  if (n === 0 || m === 0) return { lines: stats, bindings };
 
   // DP table + traceback (0 = diag, 1 = up/skip song word, 2 = left/skip
   // LRC word), row-major (m + 1 columns).
@@ -219,6 +243,11 @@ export function alignLyrics(
         // which is that line's earliest word.
         s.firstSongWord = a;
         firstWordInLine[b.lineIdx] = b.wordInLine;
+        bindings.push({
+          songIdx: i - 1,
+          lineIdx: b.lineIdx,
+          wordInLine: b.wordInLine,
+        });
       }
       i--;
       j--;
@@ -238,7 +267,8 @@ export function alignLyrics(
       s.firstSongWord = null;
     }
   }
-  return stats;
+  bindings.reverse();
+  return { lines: stats, bindings };
 }
 
 export const MIN_CONFIDENCE = 0.6;
