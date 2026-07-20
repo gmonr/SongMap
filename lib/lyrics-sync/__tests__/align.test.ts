@@ -195,6 +195,21 @@ describe("suggestPhraseFill", () => {
     expect(s.unplaced).toBe(2);
   });
 
+  it("files a pickup onset into the bar it leads into", () => {
+    const data = demoSong();
+    for (const def of Object.values(data.sections)) {
+      def.lines = def.lines.map((l) => ({ ...l, lyrics: [] }));
+    }
+    const t = buildTimeline(data);
+    // Onset 0.5 beats before bar 2's downbeat: nearest barline wins, so
+    // the line lands in bar 2, not the bar containing the onset.
+    const lrc: LrcLine[] = [{ ms: 1750, text: "never let go" }];
+    const s = suggestPhraseFill(data, t, emptySync(), BPM, lrc);
+    expect(s.fills).toEqual([
+      { sectionId: "verse", li: 0, bar: 1, text: "never let go" },
+    ]);
+  });
+
   it("never proposes occupied bars", () => {
     const data = demoSong();
     const t = buildTimeline(data);
@@ -303,6 +318,38 @@ describe("applyPlacementShifts", () => {
     ]);
   });
 
+  it("moves a line sung a full bar early, pickup included", () => {
+    // Placed in bar 2 (beat 4) but sung with a pickup into bar 1: onset
+    // 1 beat before bar 1's downbeat would be beat -1, so use onset at
+    // beat 0 minus nothing — a clear full-bar-early case.
+    const data: SongData = {
+      sections: {
+        verse: {
+          label: "Verse",
+          color: "blue",
+          lines: [line(["C", "G", "Am"], [null, "never let go", null])],
+        },
+      },
+      arrangement: [{ ref: "verse", instanceLabel: "Verse 1" }],
+    };
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [{ ms: 0, text: "never let go" }];
+    const next = applyPlacementShifts(data, t, emptySync(), BPM, lrc);
+    expect(next.sections.verse.lines[0].lyrics).toEqual([
+      { text: "never let go", bar: 0 },
+    ]);
+  });
+
+  it("leaves a pickup alone", () => {
+    const data = demoSong();
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [
+      { ms: 0, text: "hold me close" },
+      { ms: 1250, text: "never let go" }, // 1.5-beat pickup into bar 2
+    ];
+    expect(applyPlacementShifts(data, t, emptySync(), BPM, lrc)).toBe(data);
+  });
+
   it("never applies shifts beyond the cap", () => {
     // A +5-bar disagreement means calibration/structure trouble; moving it
     // would cram the section into its last bar (the Mi Agüita failure).
@@ -401,6 +448,39 @@ describe("effectiveLyricSync", () => {
 });
 
 describe("placementMismatches", () => {
+  it("tolerates pickups and mid-bar phrase starts", () => {
+    const data = demoSong();
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [
+      // "never let go" belongs to bar 2 (beat 4 = 2000 ms). Sung 1.5
+      // beats early (pickup) and, in the second variant, 2 beats late
+      // (phrase starts mid-bar) — both are normal phrasing, not
+      // misplacement.
+      { ms: 0, text: "hold me close" },
+      { ms: 1250, text: "never let go" },
+    ];
+    expect(
+      placementMismatches(
+        alignLyrics(songWordStream(data, t), lrc),
+        t,
+        emptySync(),
+        BPM
+      )
+    ).toEqual([]);
+    const lrcLate: LrcLine[] = [
+      { ms: 0, text: "hold me close" },
+      { ms: 3000, text: "never let go" },
+    ];
+    expect(
+      placementMismatches(
+        alignLyrics(songWordStream(data, t), lrcLate),
+        t,
+        emptySync(),
+        BPM
+      )
+    ).toEqual([]);
+  });
+
   it("flags lines whose sung bar disagrees with their placement", () => {
     const data = demoSong();
     const t = buildTimeline(data);
