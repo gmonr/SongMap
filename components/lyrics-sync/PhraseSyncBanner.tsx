@@ -10,7 +10,8 @@ import {
   type PhraseFill,
   type PlacementMismatch,
 } from "@/lib/lyrics-sync/align";
-import { applyPhraseFill } from "@/lib/lyrics-sync/apply";
+import { applyPhraseFill, applyPlacementShifts } from "@/lib/lyrics-sync/apply";
+import type { LrcLine } from "@/lib/lyrics-sync/lrc";
 import { buildTimeline } from "@/lib/song/playback";
 import { beatsPerBar, type SongData, type SongRow } from "@/lib/song/types";
 import {
@@ -28,6 +29,9 @@ type State =
       matchedArtist: string;
       fills: PhraseFill[];
       mismatches: PlacementMismatch[];
+      /** The parsed LRC, kept so applying can re-derive against the
+       *  then-current draft instead of a stale snapshot. */
+      lrcLines: LrcLine[];
     };
 
 const MISMATCH_PREVIEW = 6;
@@ -86,7 +90,23 @@ export function PhraseSyncBanner({
       matchedArtist: res.matchedArtist,
       fills,
       mismatches,
+      lrcLines: res.lines,
     });
+  };
+
+  // Recompute against the current draft at tap time — the map may have
+  // been edited since the check ran, and the op no-ops when it agrees.
+  const shiftToMatch = (lrcLines: LrcLine[]) => {
+    const timeline = buildTimeline(data, beatsPerBar(song.time_signature));
+    const next = applyPlacementShifts(
+      data,
+      timeline,
+      sync ?? emptySync(),
+      song.tempo || 100,
+      lrcLines
+    );
+    if (next !== data) onApplyFills(next);
+    setState({ kind: "idle" });
   };
 
   if (state.kind === "idle" || state.kind === "loading") {
@@ -123,7 +143,7 @@ export function PhraseSyncBanner({
     );
   }
 
-  const { matchedTitle, matchedArtist, fills, mismatches } = state;
+  const { matchedTitle, matchedArtist, fills, mismatches, lrcLines } = state;
   return (
     <div className="space-y-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-slate-600">
       <p>
@@ -162,7 +182,15 @@ export function PhraseSyncBanner({
         <div>
           <p className="font-semibold text-slate-700">
             {mismatches.length} line{mismatches.length === 1 ? "" : "s"} sung
-            in a different bar than placed:
+            in a different bar than placed:{" "}
+            <button
+              type="button"
+              onClick={() => shiftToMatch(lrcLines)}
+              title="Move each line's words to the bar the recording sings them in (one undoable step; timing is rough — vocal onsets, not downbeats)"
+              className="rounded-md bg-blue-600 px-2 py-0.5 font-bold text-white hover:bg-blue-700"
+            >
+              Shift them to match
+            </button>
           </p>
           <ul className="mt-0.5 space-y-0.5">
             {mismatches.slice(0, MISMATCH_PREVIEW).map((m) => (

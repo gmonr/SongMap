@@ -10,7 +10,7 @@ import {
   suggestAnchors,
   suggestPhraseFill,
 } from "../align";
-import { applyPhraseFill } from "../apply";
+import { applyPhraseFill, applyPlacementShifts } from "../apply";
 import type { LrcLine } from "../lrc";
 
 const BPM = 120; // 500 ms/beat; a 4-beat bar spans 2000 ms.
@@ -220,6 +220,112 @@ describe("applyPhraseFill", () => {
     ]);
     // Re-applying: the bar is occupied now, so nothing changes.
     expect(applyPhraseFill(next, fills)).toBe(next);
+  });
+});
+
+describe("applyPlacementShifts", () => {
+  it("is a same-reference no-op when the recording agrees", () => {
+    const data = demoSong();
+    const t = buildTimeline(data);
+    expect(applyPlacementShifts(data, t, emptySync(), BPM, PERFECT_LRC)).toBe(
+      data
+    );
+  });
+
+  it("moves a late-sung line's words to their sung bar", () => {
+    // 4-bar verse, one row: words placed in bars 0 and 1, but the second
+    // line is sung a bar later (bar 2).
+    const data: SongData = {
+      sections: {
+        verse: {
+          label: "Verse",
+          color: "blue",
+          lines: [
+            line(
+              ["C", "G", "Am", "F"],
+              ["hold me close", "never let go", null, null]
+            ),
+          ],
+        },
+      },
+      arrangement: [{ ref: "verse", instanceLabel: "Verse 1" }],
+    };
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [
+      { ms: 0, text: "hold me close" },
+      { ms: 4000, text: "never let go" },
+    ];
+    const next = applyPlacementShifts(data, t, emptySync(), BPM, lrc);
+    expect(next).not.toBe(data);
+    expect(next.sections.verse.lines[0].lyrics).toEqual([
+      { text: "hold me close", bar: 0 },
+      { text: "never let go", bar: 2 },
+    ]);
+  });
+
+  it("moves words across rows and carries highlights along", () => {
+    const data: SongData = {
+      sections: {
+        verse: {
+          label: "Verse",
+          color: "blue",
+          lines: [
+            {
+              bars: [bar("C"), bar("G")],
+              lyrics: [
+                { text: "hold me close", bar: 0 },
+                // "never" carries a syllable highlight that must travel.
+                {
+                  text: "never let go",
+                  bar: 1,
+                  marks: [{ word: 0, char: 0, end: 2 }],
+                },
+              ],
+            },
+            { bars: [bar("Am"), bar("F")], lyrics: [] },
+          ],
+        },
+      },
+      arrangement: [{ ref: "verse", instanceLabel: "Verse 1" }],
+    };
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [
+      { ms: 0, text: "hold me close" },
+      { ms: 4000, text: "never let go" }, // bar 2 = second row's first bar
+    ];
+    const next = applyPlacementShifts(data, t, emptySync(), BPM, lrc);
+    expect(next.sections.verse.lines[0].lyrics).toEqual([
+      { text: "hold me close", bar: 0 },
+    ]);
+    expect(next.sections.verse.lines[1].lyrics).toEqual([
+      { text: "never let go", bar: 0, marks: [{ word: 0, char: 0, end: 2 }] },
+    ]);
+  });
+
+  it("keeps the stream in order when only one line shifts", () => {
+    // Lines in bars 0 and 1; the first is sung in bar 1 too. The shifted
+    // words may not leapfrog the stationary ones — both end up in bar 1.
+    const data: SongData = {
+      sections: {
+        verse: {
+          label: "Verse",
+          color: "blue",
+          lines: [
+            line(["C", "G", "Am"], ["hold me close", "never let go", null]),
+          ],
+        },
+      },
+      arrangement: [{ ref: "verse", instanceLabel: "Verse 1" }],
+    };
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [
+      { ms: 2000, text: "hold me close" },
+      { ms: 2400, text: "never let go" },
+    ];
+    const next = applyPlacementShifts(data, t, emptySync(), BPM, lrc);
+    expect(next.sections.verse.lines[0].lyrics).toEqual([
+      { text: "hold me close never let go", bar: 1 },
+    ]);
   });
 });
 
