@@ -269,7 +269,11 @@ capability only) plus lyric-derived sync:
     line fitted from the lyric alignment itself (so an uncalibrated
     recording's intro can't skew every line); when neither exists the
     check says so instead of guessing, and shifts larger than 2 bars are
-    reported but never auto-applied.
+    reported but never auto-applied. Onsets are judged with a pickup
+    window — a phrase may start anywhere inside its bar or up to 2 beats
+    before it, since line-level LRC can't tell a pickup from a
+    misplacement — and fills/shifts target the *nearest* downbeat, so
+    songs full of pickups don't drown in false ±1 flags.
   - Design note: lyric timing stays *derived* (`LyricSpan.bar` → beat →
     ms via the sync anchors) — no per-line timestamps are stored, so
     reshaping a row or nudging an anchor can never desync a second source

@@ -18,7 +18,7 @@ import { lyricWords } from "@/lib/song/lyrics";
 import type { Timeline } from "@/lib/song/playback";
 import type { SongData } from "@/lib/song/types";
 import {
-  barIndexAtMs,
+  msToBeat,
   type SpotifySyncData,
   type SyncAnchor,
 } from "@/lib/spotify/sync";
@@ -282,6 +282,89 @@ export const MIN_CONFIDENCE = 0.6;
 export const MAX_SHIFT_BARS = 2;
 
 /**
+ * How many beats before its bar's downbeat a phrase's vocal onset may
+ * legitimately fall (a pickup / anacrusis). Line-level LRC stamps onsets,
+ * and it cannot distinguish "starts on a pickup" from "placed a bar
+ * late" — inside this window the map wins and nothing is flagged, or the
+ * check drowns in false ±1 "mismatches" on any song with pickups.
+ */
+export const PICKUP_BEATS = 2;
+
+/**
+ * Index of the bar whose downbeat is nearest `beat` (ties go to the later
+ * bar — an onset midway is more often a pickup into the next bar than a
+ * phrase dragging half a bar behind), or null outside the song.
+ */
+function nearestBarIndex(t: Timeline, beat: number): number | null {
+  if (t.bars.length === 0 || beat < -PICKUP_BEATS || beat >= t.totalBeats) {
+    return null;
+  }
+  if (beat <= 0) return 0;
+  let lo = 0;
+  let hi = t.bars.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (t.bars[mid].startBeat <= beat) lo = mid;
+    else hi = mid - 1;
+  }
+  const cur = t.bars[lo];
+  const next = t.bars[lo + 1];
+  if (next && next.startBeat - beat <= beat - cur.startBeat) return lo + 1;
+  return lo;
+}
+
+/** A line whose placement genuinely disagrees with its sung timing. */
+export interface ShiftTarget {
+  lineIdx: number;
+  text: string;
+  ms: number;
+  /** Timeline index of the bar its words currently start in. */
+  currentIdx: number;
+  /** Timeline index of the bar nearest its sung onset. */
+  suggestedIdx: number;
+}
+
+/**
+ * The lines whose sung onsets fall outside their placed bar's tolerance
+ * window — earlier than a pickup could explain, or past the bar's end —
+ * each with the bar whose downbeat is nearest the onset. This is the one
+ * mismatch definition both the report and the auto-shift consume, so what
+ * the user is shown is exactly what applying would do.
+ */
+export function lineShiftTargets(
+  matches: LineMatch[],
+  timeline: Timeline,
+  sync: SpotifySyncData,
+  fallbackBpm: number
+): ShiftTarget[] {
+  const out: ShiftTarget[] = [];
+  for (const s of matches) {
+    if (s.confidence < MIN_CONFIDENCE || !s.firstSongWord) continue;
+    const cur = timeline.bars[s.firstSongWord.barTimelineIdx];
+    if (!cur) continue;
+    const onset = msToBeat(sync, s.ms, fallbackBpm);
+    const diff = onset - cur.startBeat;
+    // A phrase may start anywhere inside its bar, or a pickup before it.
+    if (diff >= -PICKUP_BEATS && diff < cur.beats) continue;
+    const suggestedIdx = nearestBarIndex(timeline, onset);
+    if (
+      suggestedIdx === null ||
+      suggestedIdx === s.firstSongWord.barTimelineIdx
+    ) {
+      continue;
+    }
+    out.push({
+      lineIdx: s.lineIdx,
+      text: s.text,
+      ms: s.ms,
+      currentIdx: s.firstSongWord.barTimelineIdx,
+      suggestedIdx,
+    });
+  }
+  return out;
+}
+
+/**
  * The beats↔ms mapping lyric placement may trust: the real calibration
  * when it has ≥2 anchors (tempo comes from the anchors themselves), else
  * a tempo line fitted from the lyric alignment — the song's *own* grid,
@@ -429,7 +512,9 @@ export function suggestPhraseFill(
   let unplaced = 0;
 
   for (const line of lrcLines) {
-    const idx = barIndexAtMs(timeline, sync, line.ms, fallbackBpm);
+    // Nearest downbeat, not containing bar: onsets routinely lead their
+    // bar by a pickup, and "containing" would file those a bar early.
+    const idx = nearestBarIndex(timeline, msToBeat(sync, line.ms, fallbackBpm));
     const tb = idx !== null ? timeline.bars[idx] : undefined;
     const ref = tb ? data.arrangement[tb.arrIdx]?.ref : undefined;
     const def = ref ? data.sections[ref] : undefined;
@@ -458,7 +543,7 @@ export interface PlacementMismatch {
   ms: number;
   /** Timeline bar the words currently occupy (1-based for display). */
   currentBarNumber: number;
-  /** Timeline bar the recording says is sounding (1-based). */
+  /** Timeline bar whose downbeat is nearest the sung onset (1-based). */
   suggestedBarNumber: number;
 }
 
@@ -474,18 +559,11 @@ export function placementMismatches(
   sync: SpotifySyncData,
   fallbackBpm: number
 ): PlacementMismatch[] {
-  const out: PlacementMismatch[] = [];
-  for (const s of matches) {
-    if (s.confidence < MIN_CONFIDENCE || !s.firstSongWord) continue;
-    const idx = barIndexAtMs(timeline, sync, s.ms, fallbackBpm);
-    if (idx === null || idx === s.firstSongWord.barTimelineIdx) continue;
-    out.push({
-      lineIdx: s.lineIdx,
-      text: s.text,
-      ms: s.ms,
-      currentBarNumber: s.firstSongWord.barTimelineIdx + 1,
-      suggestedBarNumber: idx + 1,
-    });
-  }
-  return out;
+  return lineShiftTargets(matches, timeline, sync, fallbackBpm).map((t) => ({
+    lineIdx: t.lineIdx,
+    text: t.text,
+    ms: t.ms,
+    currentBarNumber: t.currentIdx + 1,
+    suggestedBarNumber: t.suggestedIdx + 1,
+  }));
 }

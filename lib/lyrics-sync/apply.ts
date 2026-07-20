@@ -7,12 +7,12 @@ import { fromDense, toDense } from "@/lib/song/lines";
 import { lyricWords, setBarLyric } from "@/lib/song/lyrics";
 import type { Timeline } from "@/lib/song/playback";
 import type { SectionDef, SongData, WordMark } from "@/lib/song/types";
-import { barIndexAtMs, type SpotifySyncData } from "@/lib/spotify/sync";
+import type { SpotifySyncData } from "@/lib/spotify/sync";
 import type { LrcLine } from "./lrc";
 import {
   alignWords,
+  lineShiftTargets,
   MAX_SHIFT_BARS,
-  MIN_CONFIDENCE,
   songWordStream,
   type PhraseFill,
 } from "./align";
@@ -83,17 +83,15 @@ export function applyPlacementShifts(
   const songWords = songWordStream(data, timeline);
   const { lines, bindings } = alignWords(songWords, lrcLines);
 
-  // Bar delta per mismatched line. Deltas beyond MAX_SHIFT_BARS are left
-  // alone: they signal calibration/structure problems, and clamping a huge
-  // shift to the section edge would drag every following word with it.
+  // Bar delta per mismatched line, from the same tolerance-windowed
+  // targets the report shows. Deltas beyond MAX_SHIFT_BARS are left
+  // alone: they signal calibration/structure problems, and clamping a
+  // huge shift to the section edge would drag every following word along.
   const lineDelta = new Map<number, number>();
-  for (const s of lines) {
-    if (s.confidence < MIN_CONFIDENCE || !s.firstSongWord) continue;
-    const idx = barIndexAtMs(timeline, sync, s.ms, fallbackBpm);
-    if (idx === null || idx === s.firstSongWord.barTimelineIdx) continue;
-    const d = idx - s.firstSongWord.barTimelineIdx;
+  for (const t of lineShiftTargets(lines, timeline, sync, fallbackBpm)) {
+    const d = t.suggestedIdx - t.currentIdx;
     if (Math.abs(d) > MAX_SHIFT_BARS) continue;
-    lineDelta.set(s.lineIdx, d);
+    lineDelta.set(t.lineIdx, d);
   }
   if (lineDelta.size === 0) return data;
 
