@@ -35,7 +35,7 @@ export function MapControls({
   const { tonic: displayTonic, minor } = parseKey(displayKey);
 
   return (
-    <>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       {/* Key selector + semitone transpose */}
       <div className="flex items-center gap-1">
         <button
@@ -111,6 +111,6 @@ export function MapControls({
         />
         Lyrics
       </label>
-    </>
+    </div>
   );
 }

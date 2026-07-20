@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { formatMs } from "@/lib/spotify/search";
 import type { SongRow } from "@/lib/song/types";
 import { AnchorSuggestion } from "@/components/lyrics-sync/AnchorSuggestion";
@@ -21,6 +22,14 @@ export function CalibratePanel({
   /** Unlink the track; omit to hide the action. */
   onUnlink?: () => void;
 }) {
+  // One shared nudge cluster acts on the selected anchor (rows used to
+  // carry four ± buttons each — 12+ tiny targets by the third anchor).
+  // A lone anchor — the common case — is auto-selected via the clamp.
+  const [activeIdx, setActiveIdx] = useState(0);
+  const anchors = sp.sync.anchors;
+  const selIdx = Math.min(activeIdx, anchors.length - 1);
+  const selected = selIdx >= 0 ? anchors[selIdx] : undefined;
+
   const labelOfBeat = (beat: number): string => {
     const idx = sp.timeline.bars.findIndex(
       (b) => beat >= b.startBeat && beat < b.startBeat + b.beats
@@ -62,24 +71,39 @@ export function CalibratePanel({
         </button>
         <AnchorSuggestion sp={sp} song={song} />
       </div>
-      {sp.sync.anchors.length > 0 && (
-        <ul className="space-y-1">
-          {sp.sync.anchors.map((a, i) => (
-            <li
-              key={`${a.beat}`}
-              className="flex flex-wrap items-center gap-1.5 text-xs"
-            >
-              <span className="w-36 truncate font-semibold text-slate-700">
-                {labelOfBeat(a.beat)}
-              </span>
-              <span className="w-14 tabular-nums text-slate-500">
-                {formatMs(a.ms)}.{String(a.ms % 1000).padStart(3, "0")}
-              </span>
+      {anchors.length > 0 && (
+        <>
+          <ul className="space-y-0.5">
+            {anchors.map((a, i) => (
+              <li key={`${a.beat}`}>
+                <button
+                  type="button"
+                  onClick={() => setActiveIdx(i)}
+                  aria-pressed={i === selIdx}
+                  className={`flex w-full max-w-72 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs ${
+                    i === selIdx
+                      ? "bg-green-50 ring-1 ring-green-200"
+                      : "hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="w-36 truncate font-semibold text-slate-700">
+                    {labelOfBeat(a.beat)}
+                  </span>
+                  <span className="tabular-nums text-slate-500">
+                    {formatMs(a.ms)}.{String(a.ms % 1000).padStart(3, "0")}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {selected && (
+            <div className="flex flex-wrap items-center gap-1.5">
               {[-250, -50, +50, +250].map((d) => (
                 <button
                   key={d}
                   type="button"
-                  onClick={() => sp.nudgeAnchor(i, d)}
+                  onClick={() => sp.nudgeAnchor(selIdx, d)}
+                  title={`Nudge ${labelOfBeat(selected.beat)} by ${d} ms and audition it`}
                   className={smallBtn}
                 >
                   {d > 0 ? `+${d}` : d}
@@ -87,15 +111,23 @@ export function CalibratePanel({
               ))}
               <button
                 type="button"
-                onClick={() => sp.removeAnchor(i)}
+                onClick={() => sp.armBeat(selected.beat)}
+                title="Re-arm this anchor's bar to stamp it again"
+                className={smallBtn}
+              >
+                ⏺ re-stamp
+              </button>
+              <button
+                type="button"
+                onClick={() => sp.removeAnchor(selIdx)}
                 aria-label="Delete anchor"
                 className="rounded-md px-1.5 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
               >
-                ✕
+                ✕ delete
               </button>
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        </>
       )}
       {onUnlink && (
         <button

@@ -228,53 +228,61 @@ export function SongMap({
           onShowLyrics={setShowLyrics}
         />
 
-        <button
-          type="button"
-          onClick={startSynth}
-          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
-        >
-          ▶ Play
-        </button>
-
-        {spotifyEnabled && (
+        {/* Playback entry points, visually one cluster. */}
+        <div className="flex shrink-0 items-center gap-2 border-l border-slate-200 pl-4">
           <button
             type="button"
-            title="Play the real recording to verify the map"
-            onClick={() => {
-              if (link.trackId) openSpotify();
-              else setLinkDialogOpen(true);
-            }}
-            className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
+            onClick={startSynth}
+            className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
           >
-            ♫ Spotify
+            ▶ Play
           </button>
-        )}
+          {spotifyEnabled && (
+            <button
+              type="button"
+              title="Play the real recording to verify the map"
+              onClick={() => {
+                if (link.trackId) openSpotify();
+                else setLinkDialogOpen(true);
+              }}
+              className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
+            >
+              ♫ Spotify
+            </button>
+          )}
+        </div>
 
-        {practiceHref && (
-          <Link
-            href={practiceHref}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        {/* The other views of this song, one segmented group. */}
+        {(practiceHref || reshapeHref || editHref) && (
+          <nav
+            aria-label="Song views"
+            className="flex shrink-0 overflow-hidden rounded-md border border-slate-300"
           >
-            Practice
-          </Link>
-        )}
-
-        {reshapeHref && (
-          <Link
-            href={reshapeHref}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Reshape
-          </Link>
-        )}
-
-        {editHref && (
-          <Link
-            href={editHref}
-            className="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
-          >
-            Edit
-          </Link>
+            {practiceHref && (
+              <Link
+                href={practiceHref}
+                className="border-r border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Practice
+              </Link>
+            )}
+            {reshapeHref && (
+              <Link
+                href={reshapeHref}
+                className="border-r border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Reshape
+              </Link>
+            )}
+            {editHref && (
+              <Link
+                href={editHref}
+                className="bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
+              >
+                Edit
+              </Link>
+            )}
+          </nav>
         )}
       </header>
 
