@@ -4,6 +4,7 @@ import type { Line, SongData } from "@/lib/song/types";
 import { emptySync } from "@/lib/spotify/sync";
 import {
   alignLyrics,
+  effectiveLyricSync,
   normalizeWord,
   placementMismatches,
   songWordStream,
@@ -302,6 +303,32 @@ describe("applyPlacementShifts", () => {
     ]);
   });
 
+  it("never applies shifts beyond the cap", () => {
+    // A +5-bar disagreement means calibration/structure trouble; moving it
+    // would cram the section into its last bar (the Mi Agüita failure).
+    const data: SongData = {
+      sections: {
+        verse: {
+          label: "Verse",
+          color: "blue",
+          lines: [
+            line(
+              ["C", "G", "Am", "F", "C", "G", "Am"],
+              ["hold me close", "never let go", null, null, null, null, null]
+            ),
+          ],
+        },
+      },
+      arrangement: [{ ref: "verse", instanceLabel: "Verse 1" }],
+    };
+    const t = buildTimeline(data);
+    const lrc: LrcLine[] = [
+      { ms: 0, text: "hold me close" },
+      { ms: 12000, text: "never let go" }, // bar 6: +5 from bar 1
+    ];
+    expect(applyPlacementShifts(data, t, emptySync(), BPM, lrc)).toBe(data);
+  });
+
   it("keeps the stream in order when only one line shifts", () => {
     // Lines in bars 0 and 1; the first is sung in bar 1 too. The shifted
     // words may not leapfrog the stationary ones — both end up in bar 1.
@@ -326,6 +353,50 @@ describe("applyPlacementShifts", () => {
     expect(next.sections.verse.lines[0].lyrics).toEqual([
       { text: "hold me close never let go", bar: 1 },
     ]);
+  });
+});
+
+describe("effectiveLyricSync", () => {
+  it("trusts a real calibration with two or more anchors", () => {
+    const sync = {
+      anchors: [
+        { beat: 0, ms: 8000 },
+        { beat: 20, ms: 18000 },
+      ],
+    };
+    expect(effectiveLyricSync(sync, [])).toBe(sync);
+  });
+
+  it("fits a grid from the alignment when uncalibrated", () => {
+    const data = demoSong();
+    const matches = alignLyrics(
+      songWordStream(data, buildTimeline(data)),
+      PERFECT_LRC
+    );
+    const eff = effectiveLyricSync(emptySync(), matches);
+    expect(eff?.anchors).toHaveLength(2);
+  });
+
+  it("returns null when nothing can be inferred (chords-only song)", () => {
+    expect(effectiveLyricSync(emptySync(), [])).toBeNull();
+  });
+
+  it("neutralizes a recording intro the naive mapping chokes on", () => {
+    // The regression: an uncalibrated song whose recording starts singing
+    // 8 s in (intro). Naively assuming bar 1 = 0:00 flags every line and
+    // shifts them absurdly; the fitted grid sees they already agree.
+    const data = demoSong();
+    const t = buildTimeline(data);
+    const lrcWithIntro = PERFECT_LRC.map((l) => ({ ...l, ms: l.ms + 8000 }));
+    const matches = alignLyrics(songWordStream(data, t), lrcWithIntro);
+    // Naive mapping: everything looks misplaced.
+    expect(
+      placementMismatches(matches, t, emptySync(), BPM).length
+    ).toBeGreaterThan(0);
+    // Fitted grid: nothing does.
+    const eff = effectiveLyricSync(emptySync(), matches);
+    expect(eff).not.toBeNull();
+    expect(placementMismatches(matches, t, eff!, BPM)).toEqual([]);
   });
 });
 

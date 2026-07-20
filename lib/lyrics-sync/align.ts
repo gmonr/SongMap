@@ -273,6 +273,33 @@ export function alignWords(
 
 export const MIN_CONFIDENCE = 0.6;
 
+/**
+ * Largest bar shift the auto-move applies. Bigger disagreements are
+ * reported but never acted on — they nearly always mean calibration or
+ * structure problems (a +19-bar "shift" would cram whole sections into
+ * one bar), not a genuinely misplaced phrase.
+ */
+export const MAX_SHIFT_BARS = 2;
+
+/**
+ * The beats↔ms mapping lyric placement may trust: the real calibration
+ * when it has ≥2 anchors (tempo comes from the anchors themselves), else
+ * a tempo line fitted from the lyric alignment — the song's *own* grid,
+ * so mismatches mean "this line sits off the grid the rest of the lyrics
+ * define", which is honest without calibration. Null when neither exists
+ * (e.g. a chords-only song with nothing to fit): the 0-anchor
+ * "recording starts at bar 1 at the stored BPM" assumption is wrong for
+ * any song with an intro, and acting on it crams lyrics into wrong bars.
+ */
+export function effectiveLyricSync(
+  sync: SpotifySyncData,
+  matches: LineMatch[]
+): SpotifySyncData | null {
+  if (sync.anchors.length >= 2) return sync;
+  const fitted = suggestAnchors(matches);
+  return fitted.anchors.length >= 2 ? { anchors: fitted.anchors } : null;
+}
+
 export interface AnchorSuggestion {
   anchors: SyncAnchor[];
   /** BPM implied by the fitted tempo line, for cross-checking song.tempo. */

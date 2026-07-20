@@ -11,6 +11,7 @@ import { barIndexAtMs, type SpotifySyncData } from "@/lib/spotify/sync";
 import type { LrcLine } from "./lrc";
 import {
   alignWords,
+  MAX_SHIFT_BARS,
   MIN_CONFIDENCE,
   songWordStream,
   type PhraseFill,
@@ -82,13 +83,17 @@ export function applyPlacementShifts(
   const songWords = songWordStream(data, timeline);
   const { lines, bindings } = alignWords(songWords, lrcLines);
 
-  // Bar delta per mismatched line.
+  // Bar delta per mismatched line. Deltas beyond MAX_SHIFT_BARS are left
+  // alone: they signal calibration/structure problems, and clamping a huge
+  // shift to the section edge would drag every following word with it.
   const lineDelta = new Map<number, number>();
   for (const s of lines) {
     if (s.confidence < MIN_CONFIDENCE || !s.firstSongWord) continue;
     const idx = barIndexAtMs(timeline, sync, s.ms, fallbackBpm);
     if (idx === null || idx === s.firstSongWord.barTimelineIdx) continue;
-    lineDelta.set(s.lineIdx, idx - s.firstSongWord.barTimelineIdx);
+    const d = idx - s.firstSongWord.barTimelineIdx;
+    if (Math.abs(d) > MAX_SHIFT_BARS) continue;
+    lineDelta.set(s.lineIdx, d);
   }
   if (lineDelta.size === 0) return data;
 

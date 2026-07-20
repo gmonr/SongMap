@@ -264,7 +264,12 @@ capability only) plus lyric-derived sync:
     placed, and can **shift them to match** — each mismatched line's
     words move rigidly to their sung bar (crossing rows where needed,
     highlights traveling along, the stream never reordered), as one
-    undoable step.
+    undoable step. Timing comparisons only run against a grid worth
+    trusting: the real calibration when it has ≥2 anchors, else a tempo
+    line fitted from the lyric alignment itself (so an uncalibrated
+    recording's intro can't skew every line); when neither exists the
+    check says so instead of guessing, and shifts larger than 2 bars are
+    reported but never auto-applied.
   - Design note: lyric timing stays *derived* (`LyricSpan.bar` → beat →
     ms via the sync anchors) — no per-line timestamps are stored, so
     reshaping a row or nudging an anchor can never desync a second source
