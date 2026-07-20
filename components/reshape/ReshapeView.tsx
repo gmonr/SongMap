@@ -49,7 +49,7 @@ import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
-import { SpotifyBar } from "@/components/song-map/SpotifyBar";
+import { TransportBar } from "@/components/song-map/TransportBar";
 import { SpotifyLinkDialog } from "@/components/song-map/SpotifyLinkDialog";
 import { useSpotifyPlayback } from "@/components/song-map/useSpotifyPlayback";
 import { PropagateBanner } from "./PropagateBanner";
@@ -1154,7 +1154,8 @@ export function ReshapeView({
               sel || offerBanner ? "border-t border-slate-100" : undefined
             }
           >
-            <SpotifyBar
+            <TransportBar
+              source="spotify"
               sp={sp}
               song={playSong}
               docked={false}

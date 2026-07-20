@@ -11,15 +11,15 @@ import { isSpotifyConfigured } from "@/lib/spotify/env";
 import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { MapControls } from "./MapControls";
-import { PlaybackBar } from "./PlaybackBar";
 import { SectionCard } from "./SectionCard";
-import { SpotifyBar } from "./SpotifyBar";
 import { SpotifyLinkDialog } from "./SpotifyLinkDialog";
+import { TransportBar } from "./TransportBar";
+import type { TransportSource } from "./transport-types";
 import { usePlayback } from "./usePlayback";
 import { useSpotifyPlayback } from "./useSpotifyPlayback";
 
-/** Which engine the docked transport is driving. */
-type PlaybackSource = null | "synth" | "spotify";
+/** Which engine the docked transport is driving (null = bar closed). */
+type PlaybackSource = null | TransportSource;
 
 /**
  * The Song Map: header with key/transpose/notation controls, then the
@@ -78,28 +78,30 @@ export function SongMap({
     setSource(null);
   };
 
-  // Engine hand-offs from the docked bars: no scrolling back to the header,
-  // and mid-song the other engine picks up from the same bar. Read the
-  // position BEFORE stop() — it nulls the playhead. When idle/paused the
-  // other transport just opens stopped.
-  const switchToSpotify = () => {
-    if (!link.trackId) {
-      setLinkDialogOpen(true);
-      return;
+  // Engine hand-off from the transport's source segment: mid-song the
+  // other engine picks up from the same bar. Read the position BEFORE
+  // stop() — it nulls the playhead. When idle/paused the other transport
+  // just opens stopped.
+  const switchSource = (target: TransportSource) => {
+    if (target === source) return;
+    if (target === "spotify") {
+      if (!link.trackId) {
+        setLinkDialogOpen(true);
+        return;
+      }
+      const idx = pb.barNumber - 1;
+      const wasPlaying = pb.status === "playing";
+      pb.stop();
+      setSource("spotify");
+      if (wasPlaying && idx >= 0) sp.playFromBar(idx);
+    } else {
+      const idx = sp.barNumber - 1;
+      const wasPlaying = sp.status === "playing";
+      sp.stop();
+      setSource("synth");
+      // No count-in: the hand-off continues playback, not restarts it.
+      if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
     }
-    const idx = pb.barNumber - 1;
-    const wasPlaying = pb.status === "playing";
-    pb.stop();
-    setSource("spotify");
-    if (wasPlaying && idx >= 0) sp.playFromBar(idx);
-  };
-  const switchToSynth = () => {
-    const idx = sp.barNumber - 1;
-    const wasPlaying = sp.status === "playing";
-    sp.stop();
-    setSource("synth");
-    // No count-in: the hand-off continues playback, it doesn't restart it.
-    if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
   };
 
   const firstInstanceLabel = firstInstanceLabels(song.data.arrangement);
@@ -258,24 +260,14 @@ export function SongMap({
 
       {/* Clearance so the docked transport never hides the last section. */}
       {source !== null && <div className="h-28" aria-hidden />}
-      {source === "synth" && (
-        <PlaybackBar
+      {source !== null && (
+        <TransportBar
+          source={source}
           pb={pb}
-          sectionLabel={
-            pb.current
-              ? song.data.arrangement[pb.current.arrIdx]?.instanceLabel ?? null
-              : null
-          }
-          onClose={closePlayback}
-          onSwitch={spotifyEnabled ? switchToSpotify : undefined}
-        />
-      )}
-      {source === "spotify" && (
-        <SpotifyBar
           sp={sp}
           song={song}
+          onSwitchSource={spotifyEnabled ? switchSource : undefined}
           onClose={closePlayback}
-          onSwitch={switchToSynth}
           onUnlink={() => {
             if (!window.confirm("Unlink this track and delete its anchors?")) {
               return;
