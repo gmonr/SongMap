@@ -115,6 +115,60 @@ const HINTS: Record<ReshapeMode, ReactNode> = {
   ),
 };
 
+/**
+ * One-line versions of the hints above: the default rendering, with the
+ * full prose behind "more" (collapsed state remembered per mode).
+ */
+const HINT_SUMMARIES: Record<ReshapeMode, string> = {
+  rows: "Tap the seam between two bars to break the row, a merge seam to join rows, or a bar to add/delete bars.",
+  lyrics:
+    "Tap the │ break between two bars, then ◀ ▶ or a lit word gap moves words. Tap a word to highlight it.",
+  chords:
+    "Tap a chord to pick it up: ◀ ▶ moves it, ✎ renames, 🗑 deletes, ＋ copies, beat-dot gaps re-split.",
+};
+
+/**
+ * The per-mode hint, one line by default with the full prose behind "more".
+ * The expansion is remembered per mode (localStorage, read after mount so
+ * SSR and first paint agree), so the big paragraph only occupies phone
+ * viewports for users who asked for it.
+ */
+function HintBlock({ mode }: { mode: ReshapeMode }) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    try {
+      setExpanded(localStorage.getItem(`reshape-hint:${mode}`) === "expanded");
+    } catch {
+      // Storage unavailable (private mode): default to the one-liner.
+    }
+  }, [mode]);
+  const toggle = () => {
+    setExpanded((e) => {
+      try {
+        localStorage.setItem(
+          `reshape-hint:${mode}`,
+          e ? "collapsed" : "expanded"
+        );
+      } catch {
+        // Non-persistent toggle still works for this visit.
+      }
+      return !e;
+    });
+  };
+  return (
+    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+      {expanded ? HINTS[mode] : HINT_SUMMARIES[mode]}{" "}
+      <button
+        type="button"
+        onClick={toggle}
+        className="font-semibold text-blue-600 hover:underline"
+      >
+        {expanded ? "less" : "more"}
+      </button>
+    </p>
+  );
+}
+
 const UNDO_LIMIT = 100;
 
 /**
@@ -137,6 +191,8 @@ export function ReshapeView({
   const router = useRouter();
   const [data, setData] = useState<SongData>(song.data);
   const [history, setHistory] = useState<SongData[]>([]);
+  // Undone states, replayable with ↷ until the next fresh edit clears them.
+  const [future, setFuture] = useState<SongData[]>([]);
   const [mode, setModeState] = useState<ReshapeMode>(initialMode);
   const [sel, setSel] = useState<ReshapeSelection | null>(null);
   // A pending "apply this fix elsewhere" offer (2B): the bar just edited
@@ -287,6 +343,12 @@ export function ReshapeView({
   // Bar-local chord edits pass `editedBar` to feed the propagation offer
   // (2B); every other edit clears any pending offer, since row/bar
   // restructuring could shift the indices it points at.
+  // Every fresh edit snapshots the current data for ↶ and invalidates ↷.
+  const pushHistory = () => {
+    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    setFuture([]);
+  };
+
   const applyToSection = (
     id: string,
     fn: (lines: Line[]) => Line[],
@@ -295,7 +357,7 @@ export function ReshapeView({
     const prev = data.sections[id].lines;
     const next = fn(prev);
     if (next === prev) return;
-    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    pushHistory();
     // Linked sections share chords: the edit flows to the source and every
     // other linked member (or severs a link the edit made structurally
     // untrue). One undo step reverts the edit and the sync together.
@@ -340,7 +402,7 @@ export function ReshapeView({
   // selection clears because section ids may vanish underneath it.
   const applyData = (next: SongData) => {
     if (next === data) return;
-    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    pushHistory();
     setSel(null);
     setOffer(null);
     setData(syncLinkedChords(next));
@@ -368,8 +430,18 @@ export function ReshapeView({
     if (history.length === 0) return;
     setSel(null);
     setOffer(null);
+    setFuture((f) => [...f, data]);
     setData(history[history.length - 1]);
     setHistory(history.slice(0, -1));
+  };
+
+  const redo = () => {
+    if (future.length === 0) return;
+    setSel(null);
+    setOffer(null);
+    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    setData(future[future.length - 1]);
+    setFuture(future.slice(0, -1));
   };
 
   // The offer's live target list (bars can drift back into/out of matching
@@ -390,7 +462,7 @@ export function ReshapeView({
     const next = propagateBarChords(data, offer.source, offerTargets);
     setOffer(null);
     if (next === data) return;
-    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    pushHistory();
     setData(syncLinkedChords(next, offer.source.sectionId));
   };
 
@@ -430,7 +502,7 @@ export function ReshapeView({
       next = moveSeamWord(next, orderedIds, sectionId, li, dir);
     }
     if (next === data) return;
-    setHistory((h) => [...h.slice(1 - UNDO_LIMIT), data]);
+    pushHistory();
     setOffer(null);
     setData(next);
   };
@@ -953,6 +1025,16 @@ export function ReshapeView({
           </button>
           <button
             type="button"
+            onClick={redo}
+            disabled={future.length === 0}
+            aria-label="Redo undone change"
+            title="Redo undone change"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-base text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
+          >
+            ↷
+          </button>
+          <button
+            type="button"
             onClick={save}
             disabled={!dirty || saving}
             className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
@@ -963,9 +1045,7 @@ export function ReshapeView({
         {error && <p className="text-xs text-rose-600">{error}</p>}
       </header>
 
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        {HINTS[mode]}
-      </p>
+      <HintBlock mode={mode} />
 
       <SectionMatchBanner data={data} onApply={applyData} />
 
