@@ -29,6 +29,7 @@ import {
   withNudgedAnchor,
   withoutAnchor,
   type SpotifySyncData,
+  type SyncAnchor,
 } from "@/lib/spotify/sync";
 import { getAccessToken, invalidateAccessToken } from "@/lib/spotify/token";
 
@@ -73,6 +74,9 @@ export interface SpotifyPlayback {
   stampArmed: () => void;
   nudgeAnchor: (index: number, deltaMs: number) => void;
   removeAnchor: (index: number) => void;
+  /** Replace the whole anchor list (normalized + saved), e.g. applying a
+   *  lyric-derived suggestion. */
+  setAnchors: (anchors: SyncAnchor[]) => void;
 }
 
 const POLL_MS = 1000;
@@ -562,5 +566,7 @@ export function useSpotifyPlayback(
     stampArmed,
     nudgeAnchor,
     removeAnchor,
+    setAnchors: (anchors) =>
+      updateSync(normalizeSync({ ...live.current.sync, anchors })),
   };
 }

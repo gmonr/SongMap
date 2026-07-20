@@ -49,6 +49,7 @@ import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
+import { PhraseSyncBanner } from "@/components/lyrics-sync/PhraseSyncBanner";
 import { ShortcutsOverlay } from "@/components/shortcuts/ShortcutsOverlay";
 import {
   useShortcuts,
@@ -1106,6 +1107,15 @@ export function ReshapeView({
       <HintBlock mode={mode} />
 
       <SectionMatchBanner data={data} onApply={applyData} />
+
+      {mode === "lyrics" && (
+        <PhraseSyncBanner
+          song={song}
+          data={data}
+          sync={link.sync}
+          onApplyFills={applyData}
+        />
+      )}
 
       {orderedIds.map((id, idx) => {
         const def = data.sections[id];

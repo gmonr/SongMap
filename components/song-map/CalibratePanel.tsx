@@ -2,6 +2,7 @@
 
 import { formatMs } from "@/lib/spotify/search";
 import type { SongRow } from "@/lib/song/types";
+import { AnchorSuggestion } from "@/components/lyrics-sync/AnchorSuggestion";
 import type { SpotifyPlayback } from "./useSpotifyPlayback";
 import { smallBtn } from "./transport-types";
 
@@ -59,6 +60,7 @@ export function CalibratePanel({
         >
           ⏺ downbeat is NOW
         </button>
+        <AnchorSuggestion sp={sp} song={song} />
       </div>
       {sp.sync.anchors.length > 0 && (
         <ul className="space-y-1">
