@@ -49,6 +49,11 @@ import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
+import { ShortcutsOverlay } from "@/components/shortcuts/ShortcutsOverlay";
+import {
+  useShortcuts,
+  type ShortcutBinding,
+} from "@/components/shortcuts/useShortcuts";
 import { TransportBar } from "@/components/song-map/TransportBar";
 import { SpotifyLinkDialog } from "@/components/song-map/SpotifyLinkDialog";
 import { useSpotifyPlayback } from "@/components/song-map/useSpotifyPlayback";
@@ -533,6 +538,59 @@ export function ReshapeView({
     selIntervals.length === 1 &&
     selIntervals[0][0] === 0 &&
     selIntervals[0][1] === selWordText.length;
+
+  // Desktop acceleration; every action mirrors a visible tap control.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const shortcuts: ShortcutBinding[] = [
+    {
+      key: "z",
+      label: "Undo",
+      when: () => history.length > 0,
+      run: undo,
+    },
+    {
+      key: "shift+z",
+      label: "Redo",
+      when: () => future.length > 0,
+      run: redo,
+    },
+    {
+      key: "y",
+      label: "Redo",
+      when: () => future.length > 0,
+      run: redo,
+    },
+    {
+      key: "ArrowLeft",
+      label: "Move selection left",
+      when: () => canMove(-1),
+      run: () => moveSel(-1),
+    },
+    {
+      key: "ArrowRight",
+      label: "Move selection right",
+      when: () => canMove(1),
+      run: () => moveSel(1),
+    },
+    { key: "1", label: "Rows mode", run: () => setMode("rows") },
+    { key: "2", label: "Lyrics mode", run: () => setMode("lyrics") },
+    { key: "3", label: "Chords mode", run: () => setMode("chords") },
+    {
+      key: "Escape",
+      label: "Drop the selection",
+      when: () => shortcutsOpen || sel !== null,
+      run: () => {
+        if (shortcutsOpen) setShortcutsOpen(false);
+        else setSel(null);
+      },
+    },
+    {
+      key: "?",
+      label: "Keyboard shortcuts",
+      run: () => setShortcutsOpen((o) => !o),
+    },
+  ];
+  useShortcuts(shortcuts);
 
   const canMove = (dir: -1 | 1): boolean => {
     if (!sel || !selLines || sel.kind === "bar" || sel.kind === "word") {
@@ -1164,6 +1222,13 @@ export function ReshapeView({
             />
           </div>
         </div>
+      )}
+
+      {shortcutsOpen && (
+        <ShortcutsOverlay
+          bindings={shortcuts}
+          onClose={() => setShortcutsOpen(false)}
+        />
       )}
 
       {linkDialogOpen && (

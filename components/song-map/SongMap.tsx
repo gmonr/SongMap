@@ -10,6 +10,11 @@ import { barIndexAt } from "@/lib/song/playback";
 import { isSpotifyConfigured } from "@/lib/spotify/env";
 import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { ShortcutsOverlay } from "@/components/shortcuts/ShortcutsOverlay";
+import {
+  useShortcuts,
+  type ShortcutBinding,
+} from "@/components/shortcuts/useShortcuts";
 import { MapControls } from "./MapControls";
 import { SectionCard } from "./SectionCard";
 import { SpotifyLinkDialog } from "./SpotifyLinkDialog";
@@ -68,6 +73,12 @@ export function SongMap({
     if (source === "spotify") sp.stop();
     setSource("synth");
   };
+  // The header ▶ Play: open the synth transport and start from the top
+  // unless it was merely paused.
+  const startSynth = () => {
+    openSynth();
+    if (pb.status === "stopped") pb.play();
+  };
   const openSpotify = () => {
     if (source === "synth") pb.stop();
     setSource("spotify");
@@ -103,6 +114,71 @@ export function SongMap({
       if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
     }
   };
+
+  // Desktop acceleration; every action here mirrors a visible control.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const shortcuts: ShortcutBinding[] = [
+    {
+      key: " ",
+      label: "Play / pause",
+      run: () => {
+        if (source === "synth") pb.toggle();
+        else if (source === "spotify") sp.toggle();
+        else startSynth();
+      },
+    },
+    {
+      key: "ArrowLeft",
+      label: "Previous section",
+      when: () => source !== null,
+      run: () => (source === "spotify" ? sp : pb).skipSection(-1),
+    },
+    {
+      key: "ArrowRight",
+      label: "Next section",
+      when: () => source !== null,
+      run: () => (source === "spotify" ? sp : pb).skipSection(1),
+    },
+    {
+      key: "s",
+      label: "Switch synth ↔ Spotify",
+      when: () => source !== null && spotifyEnabled,
+      run: () => switchSource(source === "synth" ? "spotify" : "synth"),
+    },
+    {
+      key: "l",
+      label: "Cycle loop (synth)",
+      when: () => source === "synth",
+      run: () => pb.cycleLoop(),
+    },
+    {
+      key: "-",
+      label: "Slower (synth)",
+      when: () => source === "synth",
+      run: () => pb.setTempo(pb.tempo - 4),
+    },
+    {
+      key: "=",
+      label: "Faster (synth)",
+      when: () => source === "synth",
+      run: () => pb.setTempo(pb.tempo + 4),
+    },
+    {
+      key: "Escape",
+      label: "Close transport",
+      when: () => shortcutsOpen || source !== null,
+      run: () => {
+        if (shortcutsOpen) setShortcutsOpen(false);
+        else closePlayback();
+      },
+    },
+    {
+      key: "?",
+      label: "Keyboard shortcuts",
+      run: () => setShortcutsOpen((o) => !o),
+    },
+  ];
+  useShortcuts(shortcuts);
 
   const firstInstanceLabel = firstInstanceLabels(song.data.arrangement);
 
@@ -154,10 +230,7 @@ export function SongMap({
 
         <button
           type="button"
-          onClick={() => {
-            openSynth();
-            if (pb.status === "stopped") pb.play();
-          }}
+          onClick={startSynth}
           className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
         >
           ▶ Play
@@ -276,6 +349,13 @@ export function SongMap({
             setLink({ trackId: null, sync: null });
             void clearSpotifyLink(song.id);
           }}
+        />
+      )}
+
+      {shortcutsOpen && (
+        <ShortcutsOverlay
+          bindings={shortcuts}
+          onClose={() => setShortcutsOpen(false)}
         />
       )}
 
