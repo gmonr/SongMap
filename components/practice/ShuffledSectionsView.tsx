@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { MapControls } from "@/components/song-map/MapControls";
 import { SectionCard } from "@/components/song-map/SectionCard";
 import { shuffledOrder } from "@/lib/song/practice";
 import type { Notation } from "@/lib/song/theory";
@@ -13,6 +14,7 @@ import type { SongRow } from "@/lib/song/types";
  */
 export function ShuffledSectionsView({ song }: { song: SongRow }) {
   const songKey = song.key || "C";
+  const [displayKey, setDisplayKey] = useState(songKey);
   const [notation, setNotation] = useState<Notation>("letters");
   const [showLyrics, setShowLyrics] = useState(true);
   const [seed, setSeed] = useState(0);
@@ -58,42 +60,15 @@ export function ShuffledSectionsView({ song }: { song: SongRow }) {
 
         <span className="flex-1" />
 
-        <div
-          role="group"
-          aria-label="Notation"
-          className="flex overflow-hidden rounded-md border border-slate-300"
-        >
-          {(
-            [
-              { value: "letters", label: "C" },
-              { value: "roman", label: "I" },
-              { value: "nashville", label: "1" },
-            ] as const
-          ).map((n) => (
-            <button
-              key={n.value}
-              type="button"
-              onClick={() => setNotation(n.value)}
-              className={`px-3 py-1 text-sm font-semibold ${
-                notation === n.value
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              {n.label}
-            </button>
-          ))}
-        </div>
-
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={showLyrics}
-            onChange={(e) => setShowLyrics(e.target.checked)}
-            className="h-4 w-4 accent-blue-600"
-          />
-          Lyrics
-        </label>
+        <MapControls
+          songKey={songKey}
+          displayKey={displayKey}
+          onDisplayKey={setDisplayKey}
+          notation={notation}
+          onNotation={setNotation}
+          showLyrics={showLyrics}
+          onShowLyrics={setShowLyrics}
+        />
       </div>
 
       {def ? (
@@ -102,7 +77,7 @@ export function ShuffledSectionsView({ song }: { song: SongRow }) {
           def={def}
           item={cardItem}
           songKey={songKey}
-          displayKey={songKey}
+          displayKey={displayKey}
           notation={notation}
           showLyrics={showLyrics}
         />

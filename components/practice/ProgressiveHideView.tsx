@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { MapControls } from "@/components/song-map/MapControls";
 import { SectionCard } from "@/components/song-map/SectionCard";
 import { isMasked } from "@/lib/song/practice";
-import { KEYS, parseKey, shiftKey, type Notation } from "@/lib/song/theory";
-import type { SongRow } from "@/lib/song/types";
+import type { Notation } from "@/lib/song/theory";
+import { firstInstanceLabels, type SongRow } from "@/lib/song/types";
 
 const MASK_LEVELS = [0, 25, 50, 75, 100] as const;
 
@@ -23,8 +24,6 @@ export function ProgressiveHideView({ song }: { song: SongRow }) {
   const [seed, setSeed] = useState(0);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
 
-  const { tonic: displayTonic, minor } = parseKey(displayKey);
-
   const reshuffle = () => {
     setSeed((s) => s + 1);
     setRevealed(new Set());
@@ -35,48 +34,11 @@ export function ProgressiveHideView({ song }: { song: SongRow }) {
     setRevealed(new Set());
   };
 
-  const firstInstanceLabel = new Map<string, string>();
-  for (const item of song.data.arrangement) {
-    if (!firstInstanceLabel.has(item.ref)) {
-      firstInstanceLabel.set(item.ref, item.instanceLabel);
-    }
-  }
+  const firstInstanceLabel = firstInstanceLabels(song.data.arrangement);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Transpose down"
-            onClick={() => setDisplayKey((k) => shiftKey(k, -1))}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            −
-          </button>
-          <select
-            aria-label="Key"
-            value={displayTonic}
-            onChange={(e) => setDisplayKey(e.target.value + (minor ? "m" : ""))}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-semibold"
-          >
-            {KEYS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-                {minor ? "m" : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-label="Transpose up"
-            onClick={() => setDisplayKey((k) => shiftKey(k, 1))}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            +
-          </button>
-        </div>
-
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium text-slate-500">Hide</span>
           <div
@@ -111,42 +73,15 @@ export function ProgressiveHideView({ song }: { song: SongRow }) {
 
         <span className="flex-1" />
 
-        <div
-          role="group"
-          aria-label="Notation"
-          className="flex overflow-hidden rounded-md border border-slate-300"
-        >
-          {(
-            [
-              { value: "letters", label: "C" },
-              { value: "roman", label: "I" },
-              { value: "nashville", label: "1" },
-            ] as const
-          ).map((n) => (
-            <button
-              key={n.value}
-              type="button"
-              onClick={() => setNotation(n.value)}
-              className={`px-3 py-1 text-sm font-semibold ${
-                notation === n.value
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              {n.label}
-            </button>
-          ))}
-        </div>
-
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={showLyrics}
-            onChange={(e) => setShowLyrics(e.target.checked)}
-            className="h-4 w-4 accent-blue-600"
-          />
-          Lyrics
-        </label>
+        <MapControls
+          songKey={songKey}
+          displayKey={displayKey}
+          onDisplayKey={setDisplayKey}
+          notation={notation}
+          onNotation={setNotation}
+          showLyrics={showLyrics}
+          onShowLyrics={setShowLyrics}
+        />
       </div>
 
       {song.data.arrangement.map((item, i) => {

@@ -3,18 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { parseFocus } from "@/lib/song/selection";
-import type { SongRow } from "@/lib/song/types";
-import {
-  KEYS,
-  parseKey,
-  shiftKey,
-  type Notation,
-} from "@/lib/song/theory";
+import { firstInstanceLabels, type SongRow } from "@/lib/song/types";
+import { type Notation } from "@/lib/song/theory";
 import { clearSpotifyLink } from "@/app/songs/spotify-actions";
 import { barIndexAt } from "@/lib/song/playback";
 import { isSpotifyConfigured } from "@/lib/spotify/env";
 import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { MapControls } from "./MapControls";
 import { PlaybackBar } from "./PlaybackBar";
 import { SectionCard } from "./SectionCard";
 import { SpotifyBar } from "./SpotifyBar";
@@ -24,12 +20,6 @@ import { useSpotifyPlayback } from "./useSpotifyPlayback";
 
 /** Which engine the docked transport is driving. */
 type PlaybackSource = null | "synth" | "spotify";
-
-const NOTATIONS: { value: Notation; label: string; title: string }[] = [
-  { value: "letters", label: "C", title: "Chord letters" },
-  { value: "roman", label: "I", title: "Roman numerals" },
-  { value: "nashville", label: "1", title: "Nashville numbers" },
-];
 
 /**
  * The Song Map: header with key/transpose/notation controls, then the
@@ -112,15 +102,7 @@ export function SongMap({
     if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
   };
 
-  const { tonic: displayTonic, minor } = parseKey(displayKey);
-
-  // "same as Verse 1" labels: first arrangement instance of each section.
-  const firstInstanceLabel = new Map<string, string>();
-  for (const item of song.data.arrangement) {
-    if (!firstInstanceLabel.has(item.ref)) {
-      firstInstanceLabel.set(item.ref, item.instanceLabel);
-    }
-  }
+  const firstInstanceLabel = firstInstanceLabels(song.data.arrangement);
 
   // Landing back from reshape: flash the bar in the section's first
   // full instance (prefer it over same-as instances, which are the
@@ -158,83 +140,15 @@ export function SongMap({
         </div>
         <span className="flex-1" />
 
-        {/* Key selector + semitone transpose */}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Transpose down"
-            onClick={() => setDisplayKey((k) => shiftKey(k, -1))}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            −
-          </button>
-          <select
-            aria-label="Key"
-            value={displayTonic}
-            onChange={(e) =>
-              setDisplayKey(e.target.value + (minor ? "m" : ""))
-            }
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-semibold"
-          >
-            {KEYS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-                {minor ? "m" : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-label="Transpose up"
-            onClick={() => setDisplayKey((k) => shiftKey(k, 1))}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            +
-          </button>
-          {displayKey !== songKey && (
-            <button
-              type="button"
-              onClick={() => setDisplayKey(songKey)}
-              className="ml-1 text-xs text-blue-600 hover:underline"
-            >
-              reset
-            </button>
-          )}
-        </div>
-
-        {/* Letters / Roman / Nashville toggle */}
-        <div
-          role="group"
-          aria-label="Notation"
-          className="flex overflow-hidden rounded-md border border-slate-300"
-        >
-          {NOTATIONS.map((n) => (
-            <button
-              key={n.value}
-              type="button"
-              title={n.title}
-              onClick={() => setNotation(n.value)}
-              className={`px-3 py-1 text-sm font-semibold ${
-                notation === n.value
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              {n.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Structure-only mode: hide lyrics */}
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={showLyrics}
-            onChange={(e) => setShowLyrics(e.target.checked)}
-            className="h-4 w-4 accent-blue-600"
-          />
-          Lyrics
-        </label>
+        <MapControls
+          songKey={songKey}
+          displayKey={displayKey}
+          onDisplayKey={setDisplayKey}
+          notation={notation}
+          onNotation={setNotation}
+          showLyrics={showLyrics}
+          onShowLyrics={setShowLyrics}
+        />
 
         <button
           type="button"

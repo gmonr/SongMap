@@ -131,6 +131,20 @@ export function emptySongData(): SongData {
   };
 }
 
+/**
+ * "same as Verse 1" labels: each section's first arrangement instance,
+ * keyed by section id.
+ */
+export function firstInstanceLabels(
+  arrangement: ArrangementItem[]
+): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const item of arrangement) {
+    if (!labels.has(item.ref)) labels.set(item.ref, item.instanceLabel);
+  }
+  return labels;
+}
+
 /** Beats per bar from a "4/4"-style time signature (defaults to 4). */
 export function beatsPerBar(timeSignature: string | null | undefined): number {
   const n = parseInt((timeSignature ?? "4/4").split("/")[0] ?? "4", 10);
