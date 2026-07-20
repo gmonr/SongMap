@@ -223,6 +223,53 @@ closed in one pass:
   helpers in `lib/tempo/__tests__/`, and the UG BPM extraction in
   `lib/ug/__tests__/`.
 
+## Features (Phase 8)
+
+A UI-streamlining pass (nothing removed — consolidation and additive
+capability only) plus lyric-derived sync:
+
+- **One docked transport** — the synth and Spotify bars merged into a
+  single `TransportBar`: a shared transport row, then the active source's
+  knobs behind a **♪ Synth / ♫ Spotify** segment that both shows which
+  engine is sounding and hands off mid-song from the same bar. Every knob
+  (tempo, loop, count-in, click/chords mutes, device picker, calibrate)
+  carried over unchanged.
+- **Shared view controls** — the transpose / notation / Lyrics cluster is
+  one `MapControls` component on the song map and both practice drills
+  (shuffled sections gained transpose in the process).
+- **Reshape redo + compact hints** — ↷ beside ↶ (undo feeds it, a fresh
+  edit clears it), and the per-mode hint paragraph collapsed to one line
+  with the full text behind "more" (choice remembered per mode).
+- **Keyboard shortcuts** — desktop-only and additive; press `?` for the
+  cheatsheet. Song map: Space play/pause, ←/→ section skips, `s`
+  synth↔Spotify, `l` loop, `-`/`=` tempo, Esc closes the transport.
+  Reshape: `z` undo, `⇧z`/`y` redo, ←/→ move the selection, `1/2/3`
+  switch modes, Esc drops the selection. Never fires while typing; never
+  shadows browser chords.
+- **Calmer calibration** — anchor rows are selectable and one shared
+  nudge cluster (−250/−50/+50/+250, ⏺ re-stamp, delete) acts on the
+  selected anchor instead of every row carrying its own buttons.
+- **Synced-lyrics sync (LRCLIB)** — the song map and reshape can look the
+  song up on [LRCLIB](https://lrclib.net) (free, no key), fuzzy-align its
+  timed lyric lines with the map's word stream, and turn the result into
+  suggestions — never silent writes:
+  - **✨ Suggest from lyrics** (calibrate panel): proposes sync anchors
+    from the aligned line onsets (least-squares tempo fit, with the
+    implied BPM shown against the song's ♩). Applying replaces the anchor
+    list and leaves an inline undo; LRC times are vocal onsets, so the
+    copy says "rough — nudge to taste".
+  - **Check synced lyrics** (reshape, Lyrics mode): offers to fill empty
+    bars with the timed lines (one undoable step; existing lyrics are
+    never overwritten) and reports lines sung in a different bar than
+    they're placed.
+  - Design note: lyric timing stays *derived* (`LyricSpan.bar` → beat →
+    ms via the sync anchors) — no per-line timestamps are stored, so
+    reshaping a row or nudging an anchor can never desync a second source
+    of truth. If finer timing is ever wanted, the path is more anchors,
+    not new fields.
+  - Privacy note: the lookup sends the title/artist (and the linked
+    recording's duration, when known) to LRCLIB's public API.
+
 ## Data model
 
 The atomic unit is the **bar** (the thing ChordPro/Ultimate Guitar formats

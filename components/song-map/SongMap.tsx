@@ -3,33 +3,28 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { parseFocus } from "@/lib/song/selection";
-import type { SongRow } from "@/lib/song/types";
-import {
-  KEYS,
-  parseKey,
-  shiftKey,
-  type Notation,
-} from "@/lib/song/theory";
+import { firstInstanceLabels, type SongRow } from "@/lib/song/types";
+import { type Notation } from "@/lib/song/theory";
 import { clearSpotifyLink } from "@/app/songs/spotify-actions";
 import { barIndexAt } from "@/lib/song/playback";
 import { isSpotifyConfigured } from "@/lib/spotify/env";
 import { normalizeSync, type SpotifySyncData } from "@/lib/spotify/sync";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { PlaybackBar } from "./PlaybackBar";
+import { ShortcutsOverlay } from "@/components/shortcuts/ShortcutsOverlay";
+import {
+  useShortcuts,
+  type ShortcutBinding,
+} from "@/components/shortcuts/useShortcuts";
+import { MapControls } from "./MapControls";
 import { SectionCard } from "./SectionCard";
-import { SpotifyBar } from "./SpotifyBar";
 import { SpotifyLinkDialog } from "./SpotifyLinkDialog";
+import { TransportBar } from "./TransportBar";
+import type { TransportSource } from "./transport-types";
 import { usePlayback } from "./usePlayback";
 import { useSpotifyPlayback } from "./useSpotifyPlayback";
 
-/** Which engine the docked transport is driving. */
-type PlaybackSource = null | "synth" | "spotify";
-
-const NOTATIONS: { value: Notation; label: string; title: string }[] = [
-  { value: "letters", label: "C", title: "Chord letters" },
-  { value: "roman", label: "I", title: "Roman numerals" },
-  { value: "nashville", label: "1", title: "Nashville numbers" },
-];
+/** Which engine the docked transport is driving (null = bar closed). */
+type PlaybackSource = null | TransportSource;
 
 /**
  * The Song Map: header with key/transpose/notation controls, then the
@@ -78,6 +73,12 @@ export function SongMap({
     if (source === "spotify") sp.stop();
     setSource("synth");
   };
+  // The header ▶ Play: open the synth transport and start from the top
+  // unless it was merely paused.
+  const startSynth = () => {
+    openSynth();
+    if (pb.status === "stopped") pb.play();
+  };
   const openSpotify = () => {
     if (source === "synth") pb.stop();
     setSource("spotify");
@@ -88,39 +89,98 @@ export function SongMap({
     setSource(null);
   };
 
-  // Engine hand-offs from the docked bars: no scrolling back to the header,
-  // and mid-song the other engine picks up from the same bar. Read the
-  // position BEFORE stop() — it nulls the playhead. When idle/paused the
-  // other transport just opens stopped.
-  const switchToSpotify = () => {
-    if (!link.trackId) {
-      setLinkDialogOpen(true);
-      return;
+  // Engine hand-off from the transport's source segment: mid-song the
+  // other engine picks up from the same bar. Read the position BEFORE
+  // stop() — it nulls the playhead. When idle/paused the other transport
+  // just opens stopped.
+  const switchSource = (target: TransportSource) => {
+    if (target === source) return;
+    if (target === "spotify") {
+      if (!link.trackId) {
+        setLinkDialogOpen(true);
+        return;
+      }
+      const idx = pb.barNumber - 1;
+      const wasPlaying = pb.status === "playing";
+      pb.stop();
+      setSource("spotify");
+      if (wasPlaying && idx >= 0) sp.playFromBar(idx);
+    } else {
+      const idx = sp.barNumber - 1;
+      const wasPlaying = sp.status === "playing";
+      sp.stop();
+      setSource("synth");
+      // No count-in: the hand-off continues playback, not restarts it.
+      if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
     }
-    const idx = pb.barNumber - 1;
-    const wasPlaying = pb.status === "playing";
-    pb.stop();
-    setSource("spotify");
-    if (wasPlaying && idx >= 0) sp.playFromBar(idx);
-  };
-  const switchToSynth = () => {
-    const idx = sp.barNumber - 1;
-    const wasPlaying = sp.status === "playing";
-    sp.stop();
-    setSource("synth");
-    // No count-in: the hand-off continues playback, it doesn't restart it.
-    if (wasPlaying && idx >= 0) pb.playFromBar(idx, { noCountIn: true });
   };
 
-  const { tonic: displayTonic, minor } = parseKey(displayKey);
+  // Desktop acceleration; every action here mirrors a visible control.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const shortcuts: ShortcutBinding[] = [
+    {
+      key: " ",
+      label: "Play / pause",
+      run: () => {
+        if (source === "synth") pb.toggle();
+        else if (source === "spotify") sp.toggle();
+        else startSynth();
+      },
+    },
+    {
+      key: "ArrowLeft",
+      label: "Previous section",
+      when: () => source !== null,
+      run: () => (source === "spotify" ? sp : pb).skipSection(-1),
+    },
+    {
+      key: "ArrowRight",
+      label: "Next section",
+      when: () => source !== null,
+      run: () => (source === "spotify" ? sp : pb).skipSection(1),
+    },
+    {
+      key: "s",
+      label: "Switch synth ↔ Spotify",
+      when: () => source !== null && spotifyEnabled,
+      run: () => switchSource(source === "synth" ? "spotify" : "synth"),
+    },
+    {
+      key: "l",
+      label: "Cycle loop (synth)",
+      when: () => source === "synth",
+      run: () => pb.cycleLoop(),
+    },
+    {
+      key: "-",
+      label: "Slower (synth)",
+      when: () => source === "synth",
+      run: () => pb.setTempo(pb.tempo - 4),
+    },
+    {
+      key: "=",
+      label: "Faster (synth)",
+      when: () => source === "synth",
+      run: () => pb.setTempo(pb.tempo + 4),
+    },
+    {
+      key: "Escape",
+      label: "Close transport",
+      when: () => shortcutsOpen || source !== null,
+      run: () => {
+        if (shortcutsOpen) setShortcutsOpen(false);
+        else closePlayback();
+      },
+    },
+    {
+      key: "?",
+      label: "Keyboard shortcuts",
+      run: () => setShortcutsOpen((o) => !o),
+    },
+  ];
+  useShortcuts(shortcuts);
 
-  // "same as Verse 1" labels: first arrangement instance of each section.
-  const firstInstanceLabel = new Map<string, string>();
-  for (const item of song.data.arrangement) {
-    if (!firstInstanceLabel.has(item.ref)) {
-      firstInstanceLabel.set(item.ref, item.instanceLabel);
-    }
-  }
+  const firstInstanceLabel = firstInstanceLabels(song.data.arrangement);
 
   // Landing back from reshape: flash the bar in the section's first
   // full instance (prefer it over same-as instances, which are the
@@ -158,134 +218,71 @@ export function SongMap({
         </div>
         <span className="flex-1" />
 
-        {/* Key selector + semitone transpose */}
-        <div className="flex items-center gap-1">
+        <MapControls
+          songKey={songKey}
+          displayKey={displayKey}
+          onDisplayKey={setDisplayKey}
+          notation={notation}
+          onNotation={setNotation}
+          showLyrics={showLyrics}
+          onShowLyrics={setShowLyrics}
+        />
+
+        {/* Playback entry points, visually one cluster. */}
+        <div className="flex shrink-0 items-center gap-2 border-l border-slate-200 pl-4">
           <button
             type="button"
-            aria-label="Transpose down"
-            onClick={() => setDisplayKey((k) => shiftKey(k, -1))}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
+            onClick={startSynth}
+            className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
           >
-            −
+            ▶ Play
           </button>
-          <select
-            aria-label="Key"
-            value={displayTonic}
-            onChange={(e) =>
-              setDisplayKey(e.target.value + (minor ? "m" : ""))
-            }
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-semibold"
-          >
-            {KEYS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-                {minor ? "m" : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-label="Transpose up"
-            onClick={() => setDisplayKey((k) => shiftKey(k, 1))}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            +
-          </button>
-          {displayKey !== songKey && (
+          {spotifyEnabled && (
             <button
               type="button"
-              onClick={() => setDisplayKey(songKey)}
-              className="ml-1 text-xs text-blue-600 hover:underline"
+              title="Play the real recording to verify the map"
+              onClick={() => {
+                if (link.trackId) openSpotify();
+                else setLinkDialogOpen(true);
+              }}
+              className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
             >
-              reset
+              ♫ Spotify
             </button>
           )}
         </div>
 
-        {/* Letters / Roman / Nashville toggle */}
-        <div
-          role="group"
-          aria-label="Notation"
-          className="flex overflow-hidden rounded-md border border-slate-300"
-        >
-          {NOTATIONS.map((n) => (
-            <button
-              key={n.value}
-              type="button"
-              title={n.title}
-              onClick={() => setNotation(n.value)}
-              className={`px-3 py-1 text-sm font-semibold ${
-                notation === n.value
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              {n.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Structure-only mode: hide lyrics */}
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={showLyrics}
-            onChange={(e) => setShowLyrics(e.target.checked)}
-            className="h-4 w-4 accent-blue-600"
-          />
-          Lyrics
-        </label>
-
-        <button
-          type="button"
-          onClick={() => {
-            openSynth();
-            if (pb.status === "stopped") pb.play();
-          }}
-          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
-        >
-          ▶ Play
-        </button>
-
-        {spotifyEnabled && (
-          <button
-            type="button"
-            title="Play the real recording to verify the map"
-            onClick={() => {
-              if (link.trackId) openSpotify();
-              else setLinkDialogOpen(true);
-            }}
-            className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
+        {/* The other views of this song, one segmented group. */}
+        {(practiceHref || reshapeHref || editHref) && (
+          <nav
+            aria-label="Song views"
+            className="flex shrink-0 overflow-hidden rounded-md border border-slate-300"
           >
-            ♫ Spotify
-          </button>
-        )}
-
-        {practiceHref && (
-          <Link
-            href={practiceHref}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Practice
-          </Link>
-        )}
-
-        {reshapeHref && (
-          <Link
-            href={reshapeHref}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Reshape
-          </Link>
-        )}
-
-        {editHref && (
-          <Link
-            href={editHref}
-            className="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
-          >
-            Edit
-          </Link>
+            {practiceHref && (
+              <Link
+                href={practiceHref}
+                className="border-r border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Practice
+              </Link>
+            )}
+            {reshapeHref && (
+              <Link
+                href={reshapeHref}
+                className="border-r border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Reshape
+              </Link>
+            )}
+            {editHref && (
+              <Link
+                href={editHref}
+                className="bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
+              >
+                Edit
+              </Link>
+            )}
+          </nav>
         )}
       </header>
 
@@ -344,24 +341,14 @@ export function SongMap({
 
       {/* Clearance so the docked transport never hides the last section. */}
       {source !== null && <div className="h-28" aria-hidden />}
-      {source === "synth" && (
-        <PlaybackBar
+      {source !== null && (
+        <TransportBar
+          source={source}
           pb={pb}
-          sectionLabel={
-            pb.current
-              ? song.data.arrangement[pb.current.arrIdx]?.instanceLabel ?? null
-              : null
-          }
-          onClose={closePlayback}
-          onSwitch={spotifyEnabled ? switchToSpotify : undefined}
-        />
-      )}
-      {source === "spotify" && (
-        <SpotifyBar
           sp={sp}
           song={song}
+          onSwitchSource={spotifyEnabled ? switchSource : undefined}
           onClose={closePlayback}
-          onSwitch={switchToSynth}
           onUnlink={() => {
             if (!window.confirm("Unlink this track and delete its anchors?")) {
               return;
@@ -370,6 +357,13 @@ export function SongMap({
             setLink({ trackId: null, sync: null });
             void clearSpotifyLink(song.id);
           }}
+        />
+      )}
+
+      {shortcutsOpen && (
+        <ShortcutsOverlay
+          bindings={shortcuts}
+          onClose={() => setShortcutsOpen(false)}
         />
       )}
 
