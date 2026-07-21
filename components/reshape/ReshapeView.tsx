@@ -219,8 +219,10 @@ export function ReshapeView({
   // Spotify while reshaping: hear the recording as the feedback loop for
   // restructuring. The hook plays the DRAFT's timeline (playSong merges the
   // edited data in), so the playhead always matches what's on screen — but
-  // calibration is hidden here (showCalibrate=false on the bar), so anchor
-  // edits/saves stay a song-map activity.
+  // tap-to-calibrate is hidden here (showCalibrate=false on the bar), so
+  // hand-stamped anchors stay a song-map activity. The one exception is the
+  // Lyrics-mode LRCLIB banner, which may persist lyric-derived anchors via
+  // sp.setAnchors on an uncalibrated song.
   const spotifyEnabled = isSpotifyConfigured && isSupabaseConfigured;
   const [spotifyOpen, setSpotifyOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -1112,8 +1114,11 @@ export function ReshapeView({
         <PhraseSyncBanner
           song={song}
           data={data}
-          sync={link.sync}
+          sync={sp.sync}
           onApplyFills={applyData}
+          onApplyAnchors={
+            spotifyEnabled && link.trackId ? sp.setAnchors : undefined
+          }
         />
       )}
 

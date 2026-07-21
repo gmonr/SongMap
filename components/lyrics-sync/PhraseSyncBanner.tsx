@@ -9,6 +9,7 @@ import {
   placementMismatches,
   songWordStream,
   suggestPhraseFill,
+  type AnchorSuggestion,
   type PhraseFill,
   type PlacementMismatch,
 } from "@/lib/lyrics-sync/align";
@@ -16,7 +17,11 @@ import { applyPhraseFill, applyPlacementShifts } from "@/lib/lyrics-sync/apply";
 import type { LrcLine } from "@/lib/lyrics-sync/lrc";
 import { buildTimeline } from "@/lib/song/playback";
 import { beatsPerBar, type SongData, type SongRow } from "@/lib/song/types";
-import { emptySync, type SpotifySyncData } from "@/lib/spotify/sync";
+import {
+  emptySync,
+  type SpotifySyncData,
+  type SyncAnchor,
+} from "@/lib/spotify/sync";
 
 type State =
   | { kind: "idle" }
@@ -33,10 +38,16 @@ type State =
       mismatches: PlacementMismatch[];
       /** Lines disagreeing by more than the cap — reported, never moved. */
       farOff: number;
+      /** The grid was fitted from the lyrics themselves (song uncalibrated):
+       *  it can't see whole-map offsets, and its anchors are worth applying
+       *  as real calibration. Null when real calibration was used. */
+      fitted: AnchorSuggestion | null;
       /** The parsed LRC, kept so applying can re-derive against the
        *  then-current draft instead of a stale snapshot. */
       lrcLines: LrcLine[];
-    };
+    }
+  /** Fitted anchors were applied as calibration; prev supports undo. */
+  | { kind: "calibrated"; count: number; prev: SyncAnchor[] };
 
 const MISMATCH_PREVIEW = 6;
 
@@ -51,18 +62,29 @@ const MISMATCH_PREVIEW = 6;
  * alignment itself — see effectiveLyricSync): the naive "recording starts
  * at bar 1 at the stored BPM" assumption misplaces everything for any
  * song with an intro.
+ *
+ * A fitted grid is circular — it grades placements against a line fitted
+ * through those same placements, so a whole-map offset is invisible to it.
+ * When the check ran on one, the banner says so instead of claiming the
+ * map agrees with the recording, and (when the host can persist anchors)
+ * offers the fitted anchors as one-tap playback calibration — that, not
+ * the quiet check, is what actually lines playback up with the map.
  */
 export function PhraseSyncBanner({
   song,
   data,
   sync,
   onApplyFills,
+  onApplyAnchors,
 }: {
   song: SongRow;
   /** The current draft (not the saved row) so suggestions track edits. */
   data: SongData;
   sync: SpotifySyncData | null;
   onApplyFills: (next: SongData) => void;
+  /** Persist a lyric-derived calibration (a recording is linked and the
+   *  host can save anchors). Absent: the calibrate offer isn't shown. */
+  onApplyAnchors?: (anchors: SyncAnchor[]) => void;
 }) {
   const [state, setState] = useState<State>({ kind: "idle" });
 
@@ -84,8 +106,8 @@ export function PhraseSyncBanner({
     }
     const timeline = buildTimeline(data, beatsPerBar(song.time_signature));
     const matches = alignLyrics(songWordStream(data, timeline), res.lines);
-    const effSync = effectiveLyricSync(sync ?? emptySync(), matches);
-    if (!effSync) {
+    const grid = effectiveLyricSync(sync ?? emptySync(), matches);
+    if (!grid) {
       setState({
         kind: "unsynced",
         matchedTitle: res.matchedTitle,
@@ -94,8 +116,14 @@ export function PhraseSyncBanner({
       return;
     }
     const bpm = song.tempo || 100;
-    const { fills } = suggestPhraseFill(data, timeline, effSync, bpm, res.lines);
-    const all = placementMismatches(matches, timeline, effSync, bpm);
+    const { fills } = suggestPhraseFill(
+      data,
+      timeline,
+      grid.sync,
+      bpm,
+      res.lines
+    );
+    const all = placementMismatches(matches, timeline, grid.sync, bpm);
     const mismatches = all.filter(
       (m) =>
         Math.abs(m.suggestedBarNumber - m.currentBarNumber) <= MAX_SHIFT_BARS
@@ -107,6 +135,7 @@ export function PhraseSyncBanner({
       fills,
       mismatches,
       farOff: all.length - mismatches.length,
+      fitted: grid.source === "fitted" ? grid.suggestion : null,
       lrcLines: res.lines,
     });
   };
@@ -115,21 +144,28 @@ export function PhraseSyncBanner({
   // been edited since the check ran, and the op no-ops when it agrees.
   const shiftToMatch = (lrcLines: LrcLine[]) => {
     const timeline = buildTimeline(data, beatsPerBar(song.time_signature));
-    const effSync = effectiveLyricSync(
+    const grid = effectiveLyricSync(
       sync ?? emptySync(),
       alignLyrics(songWordStream(data, timeline), lrcLines)
     );
-    if (effSync) {
+    if (grid) {
       const next = applyPlacementShifts(
         data,
         timeline,
-        effSync,
+        grid.sync,
         song.tempo || 100,
         lrcLines
       );
       if (next !== data) onApplyFills(next);
     }
     setState({ kind: "idle" });
+  };
+
+  const calibrate = (fitted: AnchorSuggestion) => {
+    if (!onApplyAnchors) return;
+    const prev = sync?.anchors ?? [];
+    onApplyAnchors(fitted.anchors);
+    setState({ kind: "calibrated", count: fitted.anchors.length, prev });
   };
 
   if (state.kind === "idle" || state.kind === "loading") {
@@ -188,8 +224,56 @@ export function PhraseSyncBanner({
     );
   }
 
-  const { matchedTitle, matchedArtist, fills, mismatches, farOff, lrcLines } =
-    state;
+  if (state.kind === "calibrated") {
+    return (
+      <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-slate-600">
+        Applied {state.count} lyric-derived anchor
+        {state.count === 1 ? "" : "s"} — playback now follows the synced
+        lyrics&apos; timing. Nudge on the song map (♫) to taste, rough to
+        within a beat.{" "}
+        <button
+          type="button"
+          onClick={() => {
+            onApplyAnchors?.(state.prev);
+            setState({ kind: "idle" });
+          }}
+          className="font-semibold text-blue-600 hover:underline"
+        >
+          undo
+        </button>{" "}
+        <button
+          type="button"
+          onClick={() => setState({ kind: "idle" })}
+          className="text-slate-400 hover:underline"
+        >
+          done
+        </button>
+      </div>
+    );
+  }
+
+  const {
+    matchedTitle,
+    matchedArtist,
+    fills,
+    mismatches,
+    farOff,
+    fitted,
+    lrcLines,
+  } = state;
+  const quiet = fills.length === 0 && mismatches.length === 0 && farOff === 0;
+  const calibrateBtn = fitted && onApplyAnchors && (
+    <button
+      type="button"
+      onClick={() => calibrate(fitted)}
+      title={`Save ${fitted.anchors.length} anchors derived from the synced lyrics${
+        fitted.fittedBpm !== null ? ` (fits ♩≈${fitted.fittedBpm})` : ""
+      } — undoable, rough to within a beat`}
+      className="rounded-md bg-green-600 px-2 py-0.5 font-bold text-white hover:bg-green-700"
+    >
+      Calibrate playback from these lyrics
+    </button>
+  );
   return (
     <div className="space-y-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-slate-600">
       <p>
@@ -201,9 +285,12 @@ export function PhraseSyncBanner({
           ? `: ${fills.length} empty bar${
               fills.length === 1 ? "" : "s"
             } could take its lines (timing is rough — vocal onsets, not downbeats).`
-          : mismatches.length > 0 || farOff > 0
-            ? "."
-            : ": the lyrics already agree with the recording's timing."}{" "}
+          : quiet
+            ? fitted
+              ? ": the lines are consistent with each other, but this song isn't calibrated, so the whole map could still sit offset from the recording (an intro shifts everything)."
+              : ": the lyrics already agree with the recording's timing."
+            : "."}{" "}
+        {quiet && fitted && calibrateBtn}{" "}
         {fills.length > 0 && (
           <button
             type="button"
@@ -258,6 +345,15 @@ export function PhraseSyncBanner({
           {farOff} line{farOff === 1 ? "" : "s"} disagree by more than{" "}
           {MAX_SHIFT_BARS} bars — left alone (that usually means a structure
           or calibration problem, not a misplaced phrase).
+        </p>
+      )}
+      {fitted && !(quiet && calibrateBtn) && (
+        <p className="text-slate-500">
+          Timing here was inferred from the lyrics themselves — playback
+          isn&apos;t calibrated, so it won&apos;t line up with the map until
+          it is.{" "}
+          {calibrateBtn ??
+            "Link a recording and calibrate on the song map (♫) to line playback up."}
         </p>
       )}
     </div>

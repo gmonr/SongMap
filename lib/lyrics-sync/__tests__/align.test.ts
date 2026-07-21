@@ -411,7 +411,10 @@ describe("effectiveLyricSync", () => {
         { beat: 20, ms: 18000 },
       ],
     };
-    expect(effectiveLyricSync(sync, [])).toBe(sync);
+    const grid = effectiveLyricSync(sync, []);
+    expect(grid?.sync).toBe(sync);
+    expect(grid?.source).toBe("calibration");
+    expect(grid?.suggestion).toBeNull();
   });
 
   it("fits a grid from the alignment when uncalibrated", () => {
@@ -420,8 +423,10 @@ describe("effectiveLyricSync", () => {
       songWordStream(data, buildTimeline(data)),
       PERFECT_LRC
     );
-    const eff = effectiveLyricSync(emptySync(), matches);
-    expect(eff?.anchors).toHaveLength(2);
+    const grid = effectiveLyricSync(emptySync(), matches);
+    expect(grid?.sync.anchors).toHaveLength(2);
+    expect(grid?.source).toBe("fitted");
+    expect(grid?.suggestion?.anchors).toEqual(grid?.sync.anchors);
   });
 
   it("returns null when nothing can be inferred (chords-only song)", () => {
@@ -443,7 +448,25 @@ describe("effectiveLyricSync", () => {
     // Fitted grid: nothing does.
     const eff = effectiveLyricSync(emptySync(), matches);
     expect(eff).not.toBeNull();
-    expect(placementMismatches(matches, t, eff!, BPM)).toEqual([]);
+    expect(placementMismatches(matches, t, eff!.sync, BPM)).toEqual([]);
+  });
+
+  it("surfaces the intro as a calibration suggestion instead of agreement", () => {
+    // The flip side of the intro regression: the fitted grid CANNOT see a
+    // uniform offset (it absorbs it into the fit's intercept), so a quiet
+    // check must not be sold as "the map agrees with the recording". What
+    // makes playback line up is applying the fitted anchors — which must
+    // carry the intro offset (beat 0 sounds at ~8 s, not 0).
+    const data = demoSong();
+    const t = buildTimeline(data);
+    const lrcWithIntro = PERFECT_LRC.map((l) => ({ ...l, ms: l.ms + 8000 }));
+    const matches = alignLyrics(songWordStream(data, t), lrcWithIntro);
+    const grid = effectiveLyricSync(emptySync(), matches);
+    expect(grid?.source).toBe("fitted");
+    const first = grid?.suggestion?.anchors[0];
+    expect(first?.beat).toBe(0);
+    expect(first?.ms).toBe(8000);
+    expect(grid?.suggestion?.fittedBpm).toBe(BPM);
   });
 });
 
