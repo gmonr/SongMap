@@ -364,23 +364,46 @@ export function lineShiftTargets(
   return out;
 }
 
+/** The grid effectiveLyricSync settled on, and how far it can be trusted. */
+export interface LyricSyncGrid {
+  sync: SpotifySyncData;
+  /** "calibration": real anchors. "fitted": inferred from the alignment. */
+  source: "calibration" | "fitted";
+  /** When fitted: the full suggestion, for offering as real calibration. */
+  suggestion: AnchorSuggestion | null;
+}
+
 /**
  * The beats↔ms mapping lyric placement may trust: the real calibration
  * when it has ≥2 anchors (tempo comes from the anchors themselves), else
  * a tempo line fitted from the lyric alignment — the song's *own* grid,
  * so mismatches mean "this line sits off the grid the rest of the lyrics
- * define", which is honest without calibration. Null when neither exists
- * (e.g. a chords-only song with nothing to fit): the 0-anchor
- * "recording starts at bar 1 at the stored BPM" assumption is wrong for
- * any song with an intro, and acting on it crams lyrics into wrong bars.
+ * define". Null when neither exists (e.g. a chords-only song with nothing
+ * to fit): the 0-anchor "recording starts at bar 1 at the stored BPM"
+ * assumption is wrong for any song with an intro, and acting on it crams
+ * lyrics into wrong bars.
+ *
+ * A fitted grid is judged BY the placements it judges, so any uniform
+ * error — the whole map shifted by an intro's worth of bars — vanishes
+ * into the fit's intercept. It can only catch lines misplaced relative to
+ * the others. Callers must not present a quiet fitted check as "the map
+ * agrees with the recording"; the honest move is to offer `suggestion` as
+ * playback calibration, which is what actually lines the two up.
  */
 export function effectiveLyricSync(
   sync: SpotifySyncData,
   matches: LineMatch[]
-): SpotifySyncData | null {
-  if (sync.anchors.length >= 2) return sync;
+): LyricSyncGrid | null {
+  if (sync.anchors.length >= 2) {
+    return { sync, source: "calibration", suggestion: null };
+  }
   const fitted = suggestAnchors(matches);
-  return fitted.anchors.length >= 2 ? { anchors: fitted.anchors } : null;
+  if (fitted.anchors.length < 2) return null;
+  return {
+    sync: { anchors: fitted.anchors },
+    source: "fitted",
+    suggestion: fitted,
+  };
 }
 
 export interface AnchorSuggestion {
