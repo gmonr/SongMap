@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { DEMO_SONG } from "@/lib/song/demo";
 import type { SongStatus } from "@/lib/song/types";
 import { normalizeStatus, StatusBadge } from "@/components/library/StatusBadge";
+import { PasswordNudge } from "@/components/auth/PasswordNudge";
 import { createSong } from "./actions";
 
 interface SongListItem {
@@ -258,6 +259,7 @@ export default async function SongsPage({
 
   return (
     <div className="space-y-4">
+      <PasswordNudge />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Library</h1>
         <div className="flex items-center gap-2">

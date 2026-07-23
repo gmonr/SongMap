@@ -5,6 +5,7 @@ import { sectionColor } from "@/lib/song/colors";
 import type { ArrangementItem, SectionDef } from "@/lib/song/types";
 import type { Notation } from "@/lib/song/theory";
 import { BarCell } from "./BarCell";
+import { Play } from "@/components/icons";
 
 /**
  * A color-coded section card: label header, chord grid (equal-width bar
@@ -99,9 +100,9 @@ export function SectionCard({
             onClick={onPlayFromHere}
             aria-label={`Play from ${item.instanceLabel || def.label}`}
             title="Play from here"
-            className="flex h-7 w-7 items-center justify-center rounded-full text-xs text-slate-400 hover:bg-white hover:text-blue-600"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-white hover:text-blue-600"
           >
-            ▶
+            <Play className="h-4 w-4" />
           </button>
         )}
         {item.sameChordsAs && (
@@ -122,6 +123,10 @@ export function SectionCard({
             return (
               <div
                 key={li}
+                // Hook for the playhead-follow effect in BarCell: it centers
+                // the whole row (not just the sounding bar) so the next line
+                // is pulled into view early, not just when this bar drifts.
+                data-songmap-row
                 className="grid grid-cols-4 gap-x-1.5 gap-y-2 md:grid-cols-8 md:gap-x-2"
               >
                 {line.bars.map((bar, bi) => (

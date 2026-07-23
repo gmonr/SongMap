@@ -309,7 +309,13 @@ numbers are always computed from `key` + chord symbol at render time.
    Row-Level Security scopes every row to its owner.
 3. Copy `.env.example` to `.env.local` and fill in
    `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-4. `npm run dev` and sign in with a magic link.
+4. `npm run dev` and sign in with a magic link. In the Supabase dashboard
+   under Auth → Email templates, make sure the magic-link template includes
+   `{{ .Token }}` (not just `{{ .ConfirmationURL }}`) — that's what lets the
+   login page also offer "enter the 6-digit code from the email", which
+   works even when the link itself opens in a different browser (e.g.
+   Gmail's in-app browser on iPhone). Once signed in, `/account/password`
+   lets a user set a password so later sign-ins don't need email at all.
 
 Without `.env.local` the app runs in **demo mode**: the bundled demo song
 (`/songs/demo`) shows the full song-map view, but nothing can be created or

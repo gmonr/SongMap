@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Play } from "@/components/icons";
 import {
   squareBtn,
   type TransportControls,
@@ -35,7 +36,7 @@ export function TransportRow({
         aria-label={t.status === "playing" ? "Pause" : "Play"}
         className={`flex h-11 w-14 shrink-0 items-center justify-center rounded-lg text-lg font-bold text-white ${accent}`}
       >
-        {t.status === "playing" ? "❙❙" : "▶"}
+        {t.status === "playing" ? "❙❙" : <Play className="h-5 w-5" />}
       </button>
       <button
         type="button"

@@ -7,6 +7,13 @@ import type { Notation } from "@/lib/song/theory";
 import { ChordPopover } from "./ChordPopover";
 import { ChordSym } from "./ChordSym";
 
+// Viewport-fraction thresholds for the playhead-follow scroll (shared by
+// BarCell and ReshapeView's equivalent effect). Keeping the bottom band at
+// ~55% rather than the old ~75% guarantees that whenever the row is
+// centered, the lower half of the screen is left showing what's next.
+const ROW_TOP_BAND = 0.12;
+const ROW_BOTTOM_BAND = 0.55;
+
 function BeatDots({ count }: { count: number }) {
   return (
     <span className="flex items-center justify-center gap-1">
@@ -77,16 +84,27 @@ export function BarCell({
   // class the moment the animation completes.
   const [flashDone, setFlashDone] = useState(false);
 
-  // Follow the playhead, but only scroll when the bar leaves the middle
+  // Follow the playhead, but only scroll when the row leaves the middle
   // band of the viewport — centering on every bar would judder constantly.
+  // Center the *row* (the line's grid, via SectionCard's data-songmap-row),
+  // not just the sounding bar: a bar can sit comfortably mid-viewport while
+  // the next line is still off-screen, and it's the next line the player
+  // needs to see coming. Bars sharing a row then trigger at most one scroll,
+  // since centering the row also settles the bar well inside the band.
   useEffect(() => {
     if (!playhead) return;
     const el = flashRef.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
+    const row = el.closest("[data-songmap-row]") ?? el;
+    const r = row.getBoundingClientRect();
     const h = window.innerHeight;
-    if (r.top < h * 0.15 || r.bottom > h * 0.75) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    // Top band matches the old bar-following threshold. The bottom band is
+    // intentionally tighter and sits above the docked transport bar (~7rem,
+    // see SongMap's h-28 clearance): centering the row here always leaves
+    // the lower half of the screen free to show the line that's coming up,
+    // instead of just clearing the fold.
+    if (r.top < h * ROW_TOP_BAND || r.bottom > h * ROW_BOTTOM_BAND) {
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [playhead]);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { MusicNote, MusicNotes } from "@/components/icons";
 import { formatMs } from "@/lib/spotify/search";
 import type { SongRow } from "@/lib/song/types";
 import { CalibratePanel } from "./CalibratePanel";
@@ -64,26 +65,26 @@ export function TransportBar({
         onClick={() => onSwitchSource("synth")}
         aria-pressed={source === "synth"}
         title="Built-in synth: metronome + chord strikes"
-        className={`px-2.5 py-1 text-xs font-semibold ${
+        className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold ${
           source === "synth"
             ? "bg-blue-600 text-white"
             : "bg-white text-slate-500 hover:bg-slate-50"
         }`}
       >
-        ♪ Synth
+        <MusicNote className="h-4 w-4" /> Synth
       </button>
       <button
         type="button"
         onClick={() => onSwitchSource("spotify")}
         aria-pressed={source === "spotify"}
         title="The linked Spotify recording, from the same bar"
-        className={`px-2.5 py-1 text-xs font-semibold ${
+        className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold ${
           source === "spotify"
             ? "bg-green-600 text-white"
             : "bg-white text-slate-500 hover:bg-slate-50"
         }`}
       >
-        ♫ Spotify
+        <MusicNotes className="h-4 w-4" /> Spotify
       </button>
     </div>
   );

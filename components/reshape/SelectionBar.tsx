@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, MusicNotes, Pencil, Play } from "@/components/icons";
 
 /**
  * The docked action bar for the current reshape selection. Rendered fixed at
@@ -68,7 +69,7 @@ export function SelectionBar({
   /** The in-progress edit text; null when not editing. */
   const [draft, setDraft] = useState<string | null>(null);
   const arrowCls =
-    "flex h-11 w-14 items-center justify-center rounded-lg bg-blue-50 text-lg font-bold text-blue-600 hover:bg-blue-100 active:bg-blue-200 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-300";
+    "flex h-11 w-14 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 active:bg-blue-200 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-300";
   return (
     <div
       className={
@@ -128,9 +129,10 @@ export function SelectionBar({
                 onClick={onPlayFromHere}
                 aria-label="Play the recording from this bar"
                 title="Play the recording from this bar"
-                className="flex h-11 w-11 items-center justify-center rounded-lg bg-green-50 text-sm font-bold text-green-700 hover:bg-green-100 active:bg-green-200"
+                className="flex h-11 w-11 items-center justify-center gap-0.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 active:bg-green-200"
               >
-                ♫▶
+                <MusicNotes className="h-4 w-4" />
+                <Play className="h-4 w-4" />
               </button>
             )}
             {edit && (
@@ -139,9 +141,9 @@ export function SelectionBar({
                 onClick={() => setDraft(edit.value)}
                 aria-label={edit.label}
                 title={edit.label}
-                className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-600 hover:bg-slate-200 active:bg-slate-300"
+                className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
               >
-                ✎
+                <Pencil className="h-5 w-5" />
               </button>
             )}
             {onMove && (
@@ -153,7 +155,7 @@ export function SelectionBar({
                   aria-label={`${moveLabel} left`}
                   className={arrowCls}
                 >
-                  ◀
+                  <ChevronLeft className="h-5 w-5" />
                 </button>
                 <button
                   type="button"
@@ -162,7 +164,7 @@ export function SelectionBar({
                   aria-label={`${moveLabel} right`}
                   className={arrowCls}
                 >
-                  ▶
+                  <ChevronRight className="h-5 w-5" />
                 </button>
               </>
             )}
