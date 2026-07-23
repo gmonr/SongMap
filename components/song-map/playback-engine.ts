@@ -3,9 +3,12 @@
 /**
  * The Web Audio playback engine: a look-ahead scheduler over a
  * `Timeline` that renders a metronome click per beat and a soft synth
- * strike per chord. One engine instance per play session (created inside
- * the user's Play tap so the AudioContext is gesture-unlocked); pause is
- * `AudioContext.suspend()`, so resume continues exactly where it left off.
+ * strike per chord. One engine instance per play session, but all
+ * sessions share a single page-level AudioContext (passed in, see
+ * `lib/audio/ios.ts`) -- iOS caps the number of AudioContexts a page may
+ * create, so creating a fresh one per Play tap eventually leaves the page
+ * with no usable audio at all. Pause is `AudioContext.suspend()`, so
+ * resume continues exactly where it left off.
  *
  * Everything the user can change mid-flight — tempo, loop mode, click /
  * chord mutes, the display key for transposed audio — is read through
@@ -50,12 +53,20 @@ export class PlaybackEngine {
   private skipOnce = 0;
   /** Scheduled playhead updates, drained as audio time reaches them. */
   private displayQueue: { time: number; idx: number | null }[] = [];
+  /** True from start() until dispose(); gates the interruption watchdog
+   *  and guards against scheduling after a stop() raced the resume(). */
+  private active = false;
+  /** True while explicitly paused, so the watchdog below doesn't fight
+   *  the user by auto-resuming a context they meant to suspend. */
+  private paused = false;
+  private onStateChange: (() => void) | null = null;
 
   constructor(
     private timeline: Timeline,
-    private cb: EngineCallbacks
+    private cb: EngineCallbacks,
+    ctx: AudioContext
   ) {
-    this.ctx = new AudioContext();
+    this.ctx = ctx;
     this.clickGain = this.ctx.createGain();
     this.chordGain = this.ctx.createGain();
     this.clickGain.connect(this.ctx.destination);
@@ -66,15 +77,32 @@ export class PlaybackEngine {
   /**
    * Begin playing at timeline index `from`, after `countInBeats` clicks.
    * `skipBeats` drops the first beats of that bar, so playback can enter
-   * a split bar at a tapped chord instead of the bar top.
+   * a split bar at a tapped chord instead of the bar top. Async because on
+   * iOS `resume()` can take real wall-clock time to settle and
+   * `currentTime` doesn't advance while suspended -- scheduling off
+   * `currentTime` before it resolves lands times in the past (silently
+   * dropped by Web Audio) or stacked on stale audio. Callers can stay
+   * fire-and-forget (`void engine.start(...)`); the count-in/tick loop
+   * still runs on its own timer once scheduling begins.
    */
-  start(from: number, countInBeats: number, skipBeats = 0) {
+  async start(from: number, countInBeats: number, skipBeats = 0) {
     this.pos = Math.max(0, Math.min(from, this.timeline.bars.length - 1));
     const firstBar = this.timeline.bars[this.pos];
     this.skipOnce = firstBar
       ? Math.max(0, Math.min(skipBeats, firstBar.beats - 1))
       : 0;
-    void this.ctx.resume();
+    this.active = true;
+    this.paused = false;
+    this.watchForInterruption();
+
+    try {
+      await this.ctx.resume();
+    } catch {
+      // Can reject (e.g. the context was closed elsewhere); the
+      // interruption watchdog will keep retrying while we're active.
+    }
+    if (!this.active) return; // disposed/stopped while we were awaiting resume
+
     const spb = 60 / this.clampTempo(this.cb.getTempo());
     let t = this.ctx.currentTime + 0.08;
     if (countInBeats > 0) {
@@ -90,18 +118,48 @@ export class PlaybackEngine {
   }
 
   pause() {
+    this.paused = true;
     void this.ctx.suspend();
   }
 
   resume() {
+    this.paused = false;
     void this.ctx.resume();
   }
 
-  /** Tear down: stop scheduling and release the audio context. */
+  /** Tear down: stop scheduling and disconnect our nodes. Does NOT close
+   *  the AudioContext -- it's shared across play sessions (see
+   *  `lib/audio/ios.ts`), so closing it here would kill audio for the
+   *  next Play tap too. */
   dispose() {
+    this.active = false;
+    this.paused = false;
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
-    void this.ctx.close();
+    if (this.onStateChange) {
+      this.ctx.removeEventListener("statechange", this.onStateChange);
+      this.onStateChange = null;
+    }
+    this.clickGain.disconnect();
+    this.chordGain.disconnect();
+  }
+
+  /**
+   * iOS moves the shared context to "suspended" behind our back on phone
+   * calls, Siri, and backgrounding (sometimes surfaced as "interrupted"
+   * before falling back to "suspended" in the state machine actually
+   * exposed to script). If we still believe we're playing when that
+   * happens, try to resume automatically instead of staying silent until
+   * the next explicit pause/play tap.
+   */
+  private watchForInterruption() {
+    if (this.onStateChange) return;
+    this.onStateChange = () => {
+      if (this.active && !this.paused && this.ctx.state === "suspended") {
+        void this.ctx.resume();
+      }
+    };
+    this.ctx.addEventListener("statechange", this.onStateChange);
   }
 
   private clampTempo(bpm: number): number {

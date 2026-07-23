@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getSharedAudioContext, primeIOSAudioSession } from "@/lib/audio/ios";
 import {
   barIndexAt,
   buildTimeline,
@@ -93,26 +94,36 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
   const startAt = (idx: number, skipBeats = 0, noCountIn = false) => {
     if (timeline.bars.length === 0) return;
     disposeEngine();
-    const engine = new PlaybackEngine(timeline, {
-      getTempo: () => live.current.tempo,
-      getLoop: () => live.current.loop,
-      getClickOn: () => live.current.clickOn,
-      getChordsOn: () => live.current.chordsOn,
-      transpose: (sym) =>
-        transposeChord(sym, songKey, live.current.displayKey),
-      onBar: (i) => {
-        setCurrentIdx(i);
-        // A null index also marks the count-in start; only a real bar
-        // (or the end) means the count-in clicks are over.
-        if (i !== null) setCountingIn(false);
+    // Inside the user's tap: unlock iOS's audio session (fixes the
+    // silent/ring switch hard-muting Web Audio) and grab the one
+    // page-shared AudioContext -- iOS caps how many a page can create, so
+    // engines never construct their own.
+    primeIOSAudioSession();
+    const ctx = getSharedAudioContext();
+    const engine = new PlaybackEngine(
+      timeline,
+      {
+        getTempo: () => live.current.tempo,
+        getLoop: () => live.current.loop,
+        getClickOn: () => live.current.clickOn,
+        getChordsOn: () => live.current.chordsOn,
+        transpose: (sym) =>
+          transposeChord(sym, songKey, live.current.displayKey),
+        onBar: (i) => {
+          setCurrentIdx(i);
+          // A null index also marks the count-in start; only a real bar
+          // (or the end) means the count-in clicks are over.
+          if (i !== null) setCountingIn(false);
+        },
+        onEnd: () => {
+          disposeEngine();
+          setStatus("stopped");
+          setCurrentIdx(null);
+          setCountingIn(false);
+        },
       },
-      onEnd: () => {
-        disposeEngine();
-        setStatus("stopped");
-        setCurrentIdx(null);
-        setCountingIn(false);
-      },
-    });
+      ctx
+    );
     engineRef.current = engine;
     anchorArr.current = timeline.bars[idx]?.arrIdx ?? -1;
     const countIn =
@@ -122,7 +133,10 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
     setCurrentIdx(null);
     setCountingIn(countIn > 0);
     setStatus("playing");
-    engine.start(idx, countIn, skipBeats);
+    // start() is async (it awaits ctx.resume() before scheduling, see
+    // playback-engine.ts) but this call site stays fire-and-forget --
+    // state above is already updated optimistically, same as before.
+    void engine.start(idx, countIn, skipBeats);
   };
 
   const stop = () => {
@@ -138,6 +152,9 @@ export function usePlayback(song: SongRow, displayKey: string): Playback {
       engineRef.current?.pause();
       setStatus("paused");
     } else if (status === "paused") {
+      // Also a user gesture (the resume tap) and iOS can have dropped the
+      // audio session while paused/backgrounded, so re-prime it here too.
+      primeIOSAudioSession();
       engineRef.current?.resume();
       setStatus("playing");
     } else {
