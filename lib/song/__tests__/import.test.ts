@@ -109,3 +109,40 @@ describe("importChordSheet Spanish section headers", () => {
     expect(section.lines).toHaveLength(2);
   });
 });
+
+describe("importChordSheet renumbers distinct same-named sections", () => {
+  it("numbers two different [Chorus] bodies distinctly", () => {
+    const imp = importChordSheet(
+      [
+        "{start_of_chorus}",
+        "[C]La la la",
+        "{end_of_chorus}",
+        "{start_of_verse}",
+        "[Dm]Some verse",
+        "{end_of_verse}",
+        "{start_of_chorus}",
+        "[G]Na na na na",
+        "{end_of_chorus}",
+      ].join("\n"),
+      4
+    );
+    expect(Object.keys(imp.data.sections).length).toBeGreaterThanOrEqual(3);
+    const chorusLabels = imp.data.arrangement
+      .map((item) => imp.data.sections[item.ref].label)
+      .filter((label) => label.startsWith("Chorus"));
+    expect(chorusLabels.sort()).toEqual(["Chorus 1", "Chorus 2"]);
+  });
+
+  it("leaves a bare repeated [Chorus] header alone (same section, not renumbered)", () => {
+    const imp = importChordSheet(
+      ["[Coro]", "C  G", "la la", "", "[Estrofa]", "D", "words", "", "[Coro]"].join(
+        "\n"
+      ),
+      4
+    );
+    const labels = imp.data.arrangement.map(
+      (item) => imp.data.sections[item.ref].label
+    );
+    expect(labels).toEqual(["Coro", "Estrofa", "Coro"]);
+  });
+});

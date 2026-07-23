@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SECTION_COLOR_NAMES, sectionColor } from "@/lib/song/colors";
-import { syncLinkedChords } from "@/lib/song/fingerprint";
+import { orderedSectionIds, syncLinkedChords } from "@/lib/song/fingerprint";
 import { lyricWords, marksAfterRetype } from "@/lib/song/lyrics";
+import { duplicateSection, splitSection } from "@/lib/song/sections";
 import { KEYS, parseKey } from "@/lib/song/theory";
 import {
   beatsPerBar,
@@ -20,7 +21,9 @@ import { createClient } from "@/lib/supabase/client";
 import { deleteSong } from "@/app/songs/actions";
 import { TapTempoButton } from "@/components/tempo/TapTempoButton";
 import { TempoLookup } from "@/components/tempo/TempoLookup";
+import { RenumberBanner } from "@/components/editor/RenumberBanner";
 import { SectionMatchBanner } from "@/components/editor/SectionMatchBanner";
+import { useDragReorder } from "@/components/editor/useDragReorder";
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -197,12 +200,18 @@ function SectionEditor({
   beats,
   onChange,
   onDelete,
+  onDuplicate,
+  onSplit,
 }: {
   id: string;
   def: SectionDef;
   beats: number;
   onChange: (def: SectionDef) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
+  /** Split the section right before line `atLine`; everything from there
+   *  down becomes a new section. */
+  onSplit: (atLine: number) => void;
 }) {
   const color = sectionColor(def.color);
 
@@ -210,6 +219,16 @@ function SectionEditor({
     onChange({
       ...def,
       lines: def.lines.map((l, i) => (i === li ? line : l)),
+    });
+
+  // Lines carry their own lyrics, so dragging a line to a new position
+  // moves its lyrics along automatically — nothing else to keep in sync.
+  const { draggingIndex: draggingLine, setRowRef: setLineRef, onHandlePointerDown: onLineHandlePointerDown } =
+    useDragReorder((from, to) => {
+      const lines = [...def.lines];
+      const [moved] = lines.splice(from, 1);
+      lines.splice(to, 0, moved);
+      onChange({ ...def, lines });
     });
 
   const lyricFor = (line: Line, barIdx: number) =>
@@ -276,6 +295,13 @@ function SectionEditor({
         <span className="text-xs text-slate-400">id: {id}</span>
         <button
           type="button"
+          onClick={onDuplicate}
+          className="text-sm text-blue-600 hover:underline"
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
           onClick={onDelete}
           className="text-sm text-rose-600 hover:underline"
         >
@@ -285,46 +311,77 @@ function SectionEditor({
 
       <div className="space-y-3">
         {def.lines.map((line, li) => (
-          <div key={li} className="rounded-lg bg-white/60 p-2">
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {line.bars.map((bar, bi) => (
-                <BarEditor
-                  key={bi}
-                  bar={bar}
-                  lyric={lyricFor(line, bi)}
-                  maxBeats={beats}
-                  onChange={(b) =>
-                    setLine(li, {
-                      ...line,
-                      bars: line.bars.map((x, i) => (i === bi ? b : x)),
-                    })
-                  }
-                  onLyricChange={(text) => setLyric(li, bi, text)}
-                  onRemove={() => removeBar(li, bi)}
-                />
-              ))}
+          <div key={li}>
+            {li > 0 && (
               <button
                 type="button"
-                onClick={() =>
-                  setLine(li, { ...line, bars: [...line.bars, newBar(beats)] })
-                }
-                className="shrink-0 self-stretch rounded-md border border-dashed border-slate-300 px-3 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600"
+                onClick={() => onSplit(li)}
+                title="Everything from this line down becomes a new section"
+                className="mb-1 w-full rounded border border-dashed border-slate-300 py-0.5 text-center text-[10px] text-slate-400 hover:border-blue-400 hover:text-blue-600"
               >
-                + bar
+                ✂ split section here
               </button>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onChange({
-                  ...def,
-                  lines: def.lines.filter((_, i) => i !== li),
-                })
-              }
-              className="mt-1 text-xs text-slate-400 hover:text-rose-600"
+            )}
+            <div
+              ref={setLineRef(li)}
+              className={`flex items-start gap-1 rounded-lg bg-white/60 p-2 ${
+                draggingLine === li
+                  ? "relative z-10 opacity-80 shadow-lg ring-2 ring-blue-300"
+                  : ""
+              }`}
             >
-              remove line
-            </button>
+              <span
+                onPointerDown={onLineHandlePointerDown(li)}
+                title="Drag to reorder line"
+                aria-label="Drag to reorder line"
+                role="button"
+                tabIndex={-1}
+                className="mt-1 shrink-0 touch-none select-none px-1 text-sm text-slate-400 hover:text-slate-700"
+              >
+                ≡
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {line.bars.map((bar, bi) => (
+                    <BarEditor
+                      key={bi}
+                      bar={bar}
+                      lyric={lyricFor(line, bi)}
+                      maxBeats={beats}
+                      onChange={(b) =>
+                        setLine(li, {
+                          ...line,
+                          bars: line.bars.map((x, i) => (i === bi ? b : x)),
+                        })
+                      }
+                      onLyricChange={(text) => setLyric(li, bi, text)}
+                      onRemove={() => removeBar(li, bi)}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLine(li, { ...line, bars: [...line.bars, newBar(beats)] })
+                    }
+                    className="shrink-0 self-stretch rounded-md border border-dashed border-slate-300 px-3 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600"
+                  >
+                    + bar
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      ...def,
+                      lines: def.lines.filter((_, i) => i !== li),
+                    })
+                  }
+                  className="mt-1 text-xs text-slate-400 hover:text-rose-600"
+                >
+                  remove line
+                </button>
+              </div>
+            </div>
           </div>
         ))}
         <button
@@ -359,7 +416,9 @@ export function SongEditor({ song }: { song: SongRow }) {
 
   const beats = beatsPerBar(timeSignature);
   const { minor } = parseKey(key);
-  const sectionIds = Object.keys(data.sections);
+  // Arrangement order, unarranged sections last — matches the song map and
+  // makes the Sections list read top-to-bottom like the song plays.
+  const sectionIds = orderedSectionIds(data);
 
   // Linked (`sameChordsAs`) sections share chords: a chord edit here flows
   // to the source and every other linked member; structural drift severs
@@ -402,6 +461,19 @@ export function SongEditor({ song }: { song: SongRow }) {
     });
   };
 
+  // The new id is minted once, outside the updater: setState updaters can
+  // run twice (React Strict Mode's purity check), and duplicateSection is
+  // otherwise deterministic — reusing the same id keeps that true.
+  const duplicateSectionAction = (id: string) => {
+    const newId = uid("section");
+    setData((d) => duplicateSection(d, id, newId));
+  };
+
+  const splitSectionAction = (id: string, atLine: number) => {
+    const newId = uid("section");
+    setData((d) => splitSection(d, id, atLine, newId));
+  };
+
   // Setting `sameChordsAs` here links live: once every instance of the
   // section points at the same source, the source's chords stamp onto it.
   const setArrangement = (
@@ -425,6 +497,22 @@ export function SongEditor({ song }: { song: SongRow }) {
       [arr[i], arr[j]] = [arr[j], arr[i]];
       return { ...d, arrangement: arr };
     });
+
+  // Drag reorders live as the pointer moves (feature: the Sections list
+  // above re-derives its order from `data.arrangement` every render, so it
+  // re-sorts in step with the drag automatically).
+  const reorderArrangement = (from: number, to: number) =>
+    setData((d) => {
+      const arr = [...d.arrangement];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      return { ...d, arrangement: arr };
+    });
+  const {
+    draggingIndex: draggingArrangement,
+    setRowRef: setArrangementRowRef,
+    onHandlePointerDown: onArrangementHandlePointerDown,
+  } = useDragReorder(reorderArrangement);
 
   async function save() {
     setSaving(true);
@@ -556,6 +644,8 @@ export function SongEditor({ song }: { song: SongRow }) {
             beats={beats}
             onChange={(def) => setSection(id, def)}
             onDelete={() => deleteSection(id)}
+            onDuplicate={() => duplicateSectionAction(id)}
+            onSplit={(atLine) => splitSectionAction(id, atLine)}
           />
         ))}
         <button
@@ -567,6 +657,7 @@ export function SongEditor({ song }: { song: SongRow }) {
         </button>
       </div>
 
+      <RenumberBanner data={data} onApply={(next) => setData(next)} />
       <SectionMatchBanner
         data={data}
         onApply={(next) => setData(syncLinkedChords(next))}
@@ -574,12 +665,34 @@ export function SongEditor({ song }: { song: SongRow }) {
 
       {/* Arrangement */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
           Arrangement
         </h2>
+        <p className="mb-3 mt-0.5 text-xs text-slate-400">
+          "Chords same as" links share only the chords — lyrics, highlights,
+          and row layout stay each instance's own.
+        </p>
         <div className="space-y-2">
           {data.arrangement.map((item, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+            <div
+              key={i}
+              ref={setArrangementRowRef(i)}
+              className={`flex flex-wrap items-center gap-2 text-sm ${
+                draggingArrangement === i
+                  ? "relative z-10 rounded-md bg-white opacity-80 shadow-lg ring-2 ring-blue-300"
+                  : ""
+              }`}
+            >
+              <span
+                onPointerDown={onArrangementHandlePointerDown(i)}
+                title="Drag to reorder"
+                aria-label="Drag to reorder"
+                role="button"
+                tabIndex={-1}
+                className="touch-none select-none px-1 text-slate-400 hover:text-slate-700"
+              >
+                ≡
+              </span>
               <span className="w-6 text-right text-slate-400">{i + 1}.</span>
               <select
                 value={item.ref}
@@ -613,8 +726,11 @@ export function SongEditor({ song }: { song: SongRow }) {
                   aria-label="Repeat count"
                 />
               </label>
-              <label className="flex items-center gap-1 text-xs text-slate-500">
-                same as
+              <label
+                className="flex items-center gap-1 text-xs text-slate-500"
+                title="Linked sections share chords only — lyrics, highlights, and row layout stay each instance's own."
+              >
+                chords same as
                 <select
                   value={item.sameChordsAs ?? ""}
                   onChange={(e) =>
@@ -633,10 +749,12 @@ export function SongEditor({ song }: { song: SongRow }) {
                 </select>
               </label>
               <span className="flex-1" />
+              {/* ↑/↓ stay as a keyboard/accessibility fallback for the drag
+                  handle above; visually smaller since dragging is primary. */}
               <button
                 type="button"
                 onClick={() => moveArrangement(i, -1)}
-                className="text-slate-400 hover:text-slate-800"
+                className="text-xs text-slate-400 hover:text-slate-800"
                 aria-label="Move up"
               >
                 ↑
@@ -644,7 +762,7 @@ export function SongEditor({ song }: { song: SongRow }) {
               <button
                 type="button"
                 onClick={() => moveArrangement(i, 1)}
-                className="text-slate-400 hover:text-slate-800"
+                className="text-xs text-slate-400 hover:text-slate-800"
                 aria-label="Move down"
               >
                 ↓

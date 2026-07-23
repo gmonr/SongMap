@@ -15,6 +15,7 @@
  */
 import { ChordLyricsPair, ChordProParser, Tag, UltimateGuitarParser } from "chordsheetjs";
 import { SECTION_COLOR_NAMES } from "./colors";
+import { renumberSections } from "./sections";
 import type { ArrangementItem, Bar, Line, SectionDef, SongData } from "./types";
 
 export interface ChordSheetImport {
@@ -435,16 +436,21 @@ export function importChordSheet(
     }
   }
 
+  // Importers regularly emit two distinct "[Chorus]" blocks that end up
+  // sharing the bare label "Chorus" — number them apart before handing the
+  // result back (see renumberSections; a no-op when nothing collides).
+  const finalData = renumberSections(data);
+
   // chordsheetjs metadata values can be string | string[].
   const meta = (v: unknown): string | undefined =>
     typeof v === "string" && v.trim() ? v.trim() : undefined;
   return {
-    data,
+    data: finalData,
     format: chordpro ? "chordpro" : "ultimate-guitar",
     title: meta(song.title),
     artist: meta(song.artist),
     key: meta(song.key),
-    guessedKey: guessKeyFromData(data),
+    guessedKey: guessKeyFromData(finalData),
     warnings,
   };
 }
