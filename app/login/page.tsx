@@ -5,6 +5,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
+/**
+ * Some Supabase Auth failures (e.g. the SMTP provider rejecting a send)
+ * come back with no usable `.message` — supabase-js falls back to
+ * stringifying the raw error body, which can render as a bare "{}".
+ * Show something a user can act on instead of that.
+ */
+function friendlyAuthError(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed || trimmed === "{}") {
+    return "Something went wrong — try again in a moment.";
+  }
+  return trimmed;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,7 +56,7 @@ function LoginForm() {
         password,
       });
       if (error) {
-        setStatus({ kind: "error", message: error.message });
+        setStatus({ kind: "error", message: friendlyAuthError(error.message) });
       } else {
         router.push("/songs");
         router.refresh();
@@ -79,7 +93,7 @@ function LoginForm() {
       type: "email",
     });
     if (error) {
-      setCodeStatus({ kind: "error", message: error.message });
+      setCodeStatus({ kind: "error", message: friendlyAuthError(error.message) });
     } else {
       router.push("/songs");
       router.refresh();
