@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { SongMap } from "@/components/song-map/SongMap";
+import { StatusControl } from "@/components/library/StatusControl";
 import { DEMO_SONG, DEMO_SONG_ID } from "@/lib/song/demo";
 import { normalizeSongData } from "@/lib/song/normalize";
 import type { SongRow } from "@/lib/song/types";
@@ -39,12 +40,19 @@ export default async function SongPage({
   song.data = normalizeSongData(song.data);
 
   return (
-    <SongMap
-      song={song}
-      editHref={`/songs/${song.id}/edit`}
-      practiceHref={`/songs/${song.id}/practice`}
-      reshapeHref={`/songs/${song.id}/reshape`}
-      focus={focus}
-    />
+    <div className="space-y-4">
+      <StatusControl
+        songId={song.id}
+        status={song.status}
+        versionLabel={song.version_label}
+      />
+      <SongMap
+        song={song}
+        editHref={`/songs/${song.id}/edit`}
+        practiceHref={`/songs/${song.id}/practice`}
+        reshapeHref={`/songs/${song.id}/reshape`}
+        focus={focus}
+      />
+    </div>
   );
 }

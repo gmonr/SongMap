@@ -103,9 +103,15 @@ export interface SongRow {
   spotify_track_id?: string | null;
   /** Recording-sync state; see lib/spotify/sync.ts SpotifySyncData. */
   spotify_sync?: unknown;
+  /** Completion tracking; see supabase/migrations/0003_add_status.sql. */
+  status?: "imported" | "in_progress" | "verified" | null;
+  /** Free-text tag distinguishing versions of the same song, e.g. "capo 3". */
+  version_label?: string | null;
   created_at?: string;
   updated_at?: string;
 }
+
+export type SongStatus = "imported" | "in_progress" | "verified";
 
 export function emptySongData(): SongData {
   const verseId = "verse-1";

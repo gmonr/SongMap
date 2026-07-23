@@ -75,6 +75,9 @@ export async function createImportedSong(input: ImportedSongInput) {
       time_signature: input.time_signature || "4/4",
       data: input.data,
       source_url: sanitizeSourceUrl(input.source_url),
+      // Untouched since import — the demote-on-edit trigger (see
+      // 0003_add_status.sql) takes it from here once the user edits `data`.
+      status: "imported",
       capo:
         typeof input.capo === "number" && input.capo > 0
           ? Math.min(Math.trunc(input.capo), 12)
