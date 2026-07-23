@@ -312,7 +312,8 @@ numbers are always computed from `key` + chord symbol at render time.
 4. `npm run dev` and sign in with a magic link. In the Supabase dashboard
    under Auth → Email templates, make sure the magic-link template includes
    `{{ .Token }}` (not just `{{ .ConfirmationURL }}`) — that's what lets the
-   login page also offer "enter the 6-digit code from the email", which
+   login page also offer "enter the code from the email" (its length isn't
+   assumed — Supabase project config can change it), which
    works even when the link itself opens in a different browser (e.g.
    Gmail's in-app browser on iPhone). Once signed in, `/account/password`
    lets a user set a password so later sign-ins don't need email at all.
