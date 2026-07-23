@@ -19,6 +19,7 @@ import {
   resumePlayback,
   seek,
   SpotifyApiError,
+  transferPlayback,
   type SpotifyDevice,
 } from "@/lib/spotify/api";
 import {
@@ -91,6 +92,11 @@ const SAVE_DEBOUNCE_MS = 800;
 const SEEK_GRACE_MS = 2500;
 /** How far a poll may sit from the seek target and still count as "agrees". */
 const SEEK_TOLERANCE_MS = 1500;
+/** A poll's reported position always disagrees with the smooth extrapolation
+ *  by a little (network latency, Spotify's own reporting jitter). Re-anchoring
+ *  on every poll turns that noise into visible stutter/backward jumps near a
+ *  bar boundary, so only re-anchor past this much drift. */
+const DRIFT_TOLERANCE_MS = 350;
 
 /**
  * Spotify verification playback for one song: seeks the linked recording to
@@ -189,8 +195,11 @@ export function useSpotifyPlayback(
 
   // ---- Playhead poll + extrapolation ------------------------------------
 
+  /** `rttMs` is the poll request's round-trip time, used to compensate for
+   *  the fact that `positionMs` was true roughly mid-flight, not on arrival. */
   const applyPoll = (
-    state: Awaited<ReturnType<typeof getPlayerState>>
+    state: Awaited<ReturnType<typeof getPlayerState>>,
+    rttMs: number
   ): void => {
     const ours = state !== null && state.trackId === live.current.trackId;
     // Polls race seeks: a request in flight when the seek was issued (or
@@ -211,23 +220,40 @@ export function useSpotifyPlayback(
       }
       seekGuard.current = null;
     }
-    lastPoll.current = ours
-      ? {
-          positionMs: state.positionMs,
-          at: performance.now(),
-          isPlaying: state.isPlaying,
-          ourTrack: true,
-        }
-      : null;
-    setDurationMs(ours ? state.durationMs : null);
+
     if (!ours) {
       // Nothing playing, or the user switched tracks in the Spotify app.
+      lastPoll.current = null;
+      setDurationMs(null);
       setStatus("stopped");
       setCurrentIdx(null);
       setPosSec(null);
-    } else {
-      setStatus(state.isPlaying ? "playing" : "paused");
+      return;
     }
+
+    setDurationMs(state.durationMs);
+    setStatus(state.isPlaying ? "playing" : "paused");
+
+    // The response was sampled roughly mid-flight, so playback has advanced
+    // ~half the round trip past the reported value by the time it arrives.
+    const compensated = state.isPlaying
+      ? state.positionMs + rttMs / 2
+      : state.positionMs;
+
+    const prev = lastPoll.current;
+    const comparable = prev?.ourTrack && prev.isPlaying && state.isPlaying;
+    const drift = comparable ? Math.abs(compensated - (estimateNow() ?? compensated)) : Infinity;
+    // Small drift is just latency-estimate noise around the extrapolation
+    // already driving the playhead — leave it alone. Re-anchor only on real
+    // drift (seek/lag elsewhere) or a play/pause/track transition.
+    if (comparable && drift < DRIFT_TOLERANCE_MS) return;
+
+    lastPoll.current = {
+      positionMs: compensated,
+      at: performance.now(),
+      isPlaying: state.isPlaying,
+      ourTrack: true,
+    };
   };
 
   useEffect(() => {
@@ -242,9 +268,10 @@ export function useSpotifyPlayback(
         return;
       }
       setConnected(true);
+      const requestStart = performance.now();
       try {
         const state = await getPlayerState(t);
-        if (!disposed) applyPoll(state);
+        if (!disposed) applyPoll(state, performance.now() - requestStart);
       } catch (e) {
         // Keep the last estimate through transient failures/429s; a 401
         // means the grant died and the UI should offer Connect again.
@@ -308,6 +335,25 @@ export function useSpotifyPlayback(
       fail(e);
       return [];
     }
+  };
+
+  /** Switch the active Connect device. Local state moves immediately for a
+   *  responsive dropdown; the actual audio only follows once the transfer
+   *  call lands, carrying the current play/pause state so an in-flight song
+   *  hops devices without stopping. */
+  const pickDevice = (id: string) => {
+    setDeviceId(id);
+    void (async () => {
+      const t = await token();
+      if (!t) return;
+      try {
+        await transferPlayback(t, id, live.current.status === "playing");
+        // Spotify's is_active flags only settle after the transfer lands.
+        void refreshDevices();
+      } catch (e) {
+        fail(e);
+      }
+    })();
   };
 
   /** Optimistic playhead: snap the map to `ms` now and arm the seek guard
@@ -565,7 +611,7 @@ export function useSpotifyPlayback(
     toggle,
     stop,
     skipSection,
-    pickDevice: setDeviceId,
+    pickDevice,
     refreshDevices: () => void refreshDevices(),
     calibrating,
     setCalibrating: (on) => {

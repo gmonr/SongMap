@@ -155,3 +155,14 @@ export async function seek(token: string, positionMs: number): Promise<void> {
   });
   await call(token, "PUT", `/me/player/seek?${q}`);
 }
+
+/** Move playback to `deviceId`. Spotify requires this explicit transfer —
+ *  device_id on /play only picks where a *new* track starts, it doesn't
+ *  relocate an already-playing one. */
+export async function transferPlayback(
+  token: string,
+  deviceId: string,
+  play: boolean
+): Promise<void> {
+  await call(token, "PUT", "/me/player", { device_ids: [deviceId], play });
+}
