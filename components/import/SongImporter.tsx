@@ -267,7 +267,11 @@ export function SongImporter({ canSave }: { canSave: boolean }) {
               rows.
             </p>
           </div>
-          <SongMap key={effectiveKey + timeSignature} song={previewSong} />
+          <SongMap
+            key={effectiveKey + timeSignature}
+            song={previewSong}
+            unsaved
+          />
         </div>
       )}
     </div>

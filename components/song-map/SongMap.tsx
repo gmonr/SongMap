@@ -36,6 +36,7 @@ export function SongMap({
   practiceHref,
   reshapeHref,
   focus,
+  unsaved = false,
 }: {
   song: SongRow;
   editHref?: string;
@@ -43,6 +44,10 @@ export function SongMap({
   reshapeHref?: string;
   /** ?focus= handoff from reshape: scroll to this bar and flash it. */
   focus?: string;
+  /** Song not persisted yet (e.g. the import live preview, whose `song.id`
+   *  is a placeholder, not a real row) — Spotify link and calibration stay
+   *  in memory only, with no server actions fired. */
+  unsaved?: boolean;
 }) {
   const songKey = song.key || "C";
   const [displayKey, setDisplayKey] = useState(songKey);
@@ -64,7 +69,8 @@ export function SongMap({
     song,
     link.trackId,
     link.sync,
-    source === "spotify"
+    source === "spotify",
+    unsaved
   );
   // Spotify mode needs somewhere to save the link/anchors.
   const spotifyEnabled = isSpotifyConfigured && isSupabaseConfigured;
@@ -355,7 +361,8 @@ export function SongMap({
             }
             closePlayback();
             setLink({ trackId: null, sync: null });
-            void clearSpotifyLink(song.id);
+            // Preview song: nothing was ever persisted to clear.
+            if (!unsaved) void clearSpotifyLink(song.id);
           }}
         />
       )}
@@ -372,6 +379,7 @@ export function SongMap({
           songId={song.id}
           title={song.title}
           artist={song.artist}
+          unsaved={unsaved}
           onClose={() => setLinkDialogOpen(false)}
           onLinked={(trackId, sync) => {
             setLink({ trackId, sync });

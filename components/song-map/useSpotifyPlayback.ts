@@ -50,6 +50,9 @@ export interface SpotifyPlayback {
   devices: SpotifyDevice[];
   deviceId: string | null;
   sync: SpotifySyncData;
+  /** Song not persisted yet — calibration edits stay in memory only, never
+   *  reach the server. Surfaced so hosts (e.g. CalibratePanel) can note it. */
+  unsaved: boolean;
 
   play: () => void;
   playFromItem: (arrIdx: number) => void;
@@ -100,7 +103,10 @@ export function useSpotifyPlayback(
   song: SongRow,
   trackId: string | null,
   initialSync: SpotifySyncData | null,
-  active: boolean
+  active: boolean,
+  /** Song not persisted yet (e.g. the import live preview) — skip every
+   *  saveSpotifySync server action and keep calibration in memory only. */
+  unsaved = false
 ): SpotifyPlayback {
   const fallbackBeats = beatsPerBar(song.time_signature);
   const timeline = useMemo(
@@ -463,6 +469,9 @@ export function useSpotifyPlayback(
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave = useRef<SpotifySyncData | null>(null);
   const scheduleSave = (next: SpotifySyncData) => {
+    // Preview song: sync state already updated by the caller (setSync) —
+    // there's nothing to persist, and no song.id to persist it against.
+    if (unsaved) return;
     pendingSave.current = next;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -483,13 +492,15 @@ export function useSpotifyPlayback(
   useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      // Preview song: scheduleSave() above never queued anything to flush.
+      if (unsaved) return;
       if (pendingSave.current) {
         saveSpotifySync(song.id, pendingSave.current).catch(() => {
           // Unmounting: nowhere left to surface the failure.
         });
       }
     },
-    [song.id]
+    [song.id, unsaved]
   );
 
   const updateSync = (next: SpotifySyncData) => {
@@ -543,6 +554,7 @@ export function useSpotifyPlayback(
     devices,
     deviceId,
     sync,
+    unsaved,
     play: () => playFromBeat(0),
     playFromItem,
     playFromBar: (idx) => {

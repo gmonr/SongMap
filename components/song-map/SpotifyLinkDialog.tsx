@@ -24,12 +24,17 @@ export function SpotifyLinkDialog({
   songId,
   title,
   artist,
+  unsaved = false,
   onClose,
   onLinked,
 }: {
   songId: string;
   title: string;
   artist: string | null;
+  /** Song not persisted yet (e.g. the import live preview) — the picked
+   *  link is kept in memory only; saveSpotifyLink is never called, since
+   *  songId is a placeholder rather than a real row to point at. */
+  unsaved?: boolean;
   onClose: () => void;
   onLinked: (trackId: string, sync: SpotifySyncData) => void;
 }) {
@@ -96,6 +101,13 @@ export function SpotifyLinkDialog({
     setBusy(true);
     setError(null);
     const sync: SpotifySyncData = { track: trackMetaOf(r), anchors: [] };
+    if (unsaved) {
+      // Preview song: nothing to persist against — the link lives in
+      // component state until the song is actually created.
+      setBusy(false);
+      onLinked(r.id, sync);
+      return;
+    }
     const saved = await saveSpotifyLink(songId, r.id, sync).catch(() => ({
       ok: false as const,
       error: undefined,
@@ -132,6 +144,13 @@ export function SpotifyLinkDialog({
             ✕
           </button>
         </div>
+
+        {unsaved && (
+          <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+            Preview — this link and any calibration won&apos;t be saved until
+            you create the song.
+          </p>
+        )}
 
         {connected === false ? (
           <div className="mt-3 space-y-3">

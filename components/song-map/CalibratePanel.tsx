@@ -47,6 +47,12 @@ export function CalibratePanel({
         it, then stamp the moment you hear its downbeat. Nudge until the
         click of your ear and the map agree.
       </p>
+      {sp.unsaved && (
+        <p className="rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+          Preview — this calibration won&apos;t be saved until you create the
+          song.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold text-slate-700">
           {sp.armedBeat !== null
