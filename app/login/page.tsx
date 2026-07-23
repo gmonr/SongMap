@@ -63,17 +63,19 @@ function LoginForm() {
   }
 
   /**
-   * Verifies the 6-digit code the same email carries alongside the magic
-   * link ({{ .Token }} in the Supabase email template). Works in any
-   * browser — the fix for the Gmail-in-app-browser trap, where the PKCE
-   * `?code=` link opens in a different browser than the one that sent it.
+   * Verifies the code the same email carries alongside the magic link
+   * ({{ .Token }} in the Supabase email template). Works in any browser —
+   * the fix for the Gmail-in-app-browser trap, where the PKCE `?code=`
+   * link opens in a different browser than the one that sent it. Token
+   * length isn't a fixed 6 digits (Supabase project config can change it),
+   * so the field takes whatever digits were entered/pasted.
    */
   async function submitCode() {
     setCodeStatus({ kind: "verifying" });
     const supabase = createClient();
     const { error } = await supabase.auth.verifyOtp({
       email,
-      token: code,
+      token: code.trim(),
       type: "email",
     });
     if (error) {
@@ -148,25 +150,25 @@ function LoginForm() {
       {status.kind === "sent" && (
         <div className="space-y-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           <p>
-            Open the link on this device, or enter the 6-digit code from the
-            email — use the code if the email opens in a different browser
-            (e.g. Gmail&apos;s in-app browser on iPhone).
+            Open the link on this device, or enter the code from the email —
+            use the code if the email opens in a different browser (e.g.
+            Gmail&apos;s in-app browser on iPhone).
           </p>
           <div className="flex gap-2">
             <input
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              maxLength={6}
+              maxLength={12}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              placeholder="123456"
+              placeholder="Code from email"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm tracking-widest text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none"
             />
             <button
               type="button"
               onClick={submitCode}
-              disabled={codeStatus.kind === "verifying" || code.length !== 6}
+              disabled={codeStatus.kind === "verifying" || code.length < 4}
               className="shrink-0 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {codeStatus.kind === "verifying" ? "Verifying…" : "Sign in with code"}
