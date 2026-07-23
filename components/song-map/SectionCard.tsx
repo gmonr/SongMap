@@ -122,6 +122,10 @@ export function SectionCard({
             return (
               <div
                 key={li}
+                // Hook for the playhead-follow effect in BarCell: it centers
+                // the whole row (not just the sounding bar) so the next line
+                // is pulled into view early, not just when this bar drifts.
+                data-songmap-row
                 className="grid grid-cols-4 gap-x-1.5 gap-y-2 md:grid-cols-8 md:gap-x-2"
               >
                 {line.bars.map((bar, bi) => (

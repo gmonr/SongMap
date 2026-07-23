@@ -289,17 +289,28 @@ export function ReshapeView({
       : null;
 
   // Follow the playhead like the song map's BarCell: scroll only when the
-  // bar leaves the viewport's middle band — and never while something is
-  // picked up, so the page can't yank mid-edit.
+  // row leaves the viewport's middle band — and never while something is
+  // picked up, so the page can't yank mid-edit. Centers the whole row (the
+  // ".flex-wrap" line wrapper each mode renders per line, matching
+  // SectionCard's row grid) so the next line is pulled into view before the
+  // playhead reaches the end of this one, not just when the bar itself
+  // drifts out of band. Falls back to the bar element if no such ancestor
+  // is found (defensive only — every mode renders one).
+  const ROW_TOP_BAND = 0.12;
+  // Tighter than a plain bar's old 0.75: centering the row here always
+  // leaves the lower half of the screen free to show the line that's next,
+  // above the docked SelectionBar/transport rather than just past the fold.
+  const ROW_BOTTOM_BAND = 0.55;
   const selActive = sel !== null;
   useEffect(() => {
     if (!playheadDomId || selActive) return;
     const el = document.getElementById(playheadDomId);
     if (!el) return;
-    const r = el.getBoundingClientRect();
+    const row = el.closest(".flex-wrap") ?? el;
+    const r = row.getBoundingClientRect();
     const h = window.innerHeight;
-    if (r.top < h * 0.15 || r.bottom > h * 0.75) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (r.top < h * ROW_TOP_BAND || r.bottom > h * ROW_BOTTOM_BAND) {
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [playheadDomId, selActive]);
 
