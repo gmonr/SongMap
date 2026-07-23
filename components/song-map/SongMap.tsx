@@ -15,6 +15,7 @@ import {
   useShortcuts,
   type ShortcutBinding,
 } from "@/components/shortcuts/useShortcuts";
+import { MusicNotes, Play } from "@/components/icons";
 import { MapControls } from "./MapControls";
 import { SectionCard } from "./SectionCard";
 import { SpotifyLinkDialog } from "./SpotifyLinkDialog";
@@ -239,9 +240,9 @@ export function SongMap({
           <button
             type="button"
             onClick={startSynth}
-            className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+            className="flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
           >
-            ▶ Play
+            <Play className="h-4 w-4" /> Play
           </button>
           {spotifyEnabled && (
             <button
@@ -251,9 +252,9 @@ export function SongMap({
                 if (link.trackId) openSpotify();
                 else setLinkDialogOpen(true);
               }}
-              className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
+              className="flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-100"
             >
-              ♫ Spotify
+              <MusicNotes className="h-4 w-4" /> Spotify
             </button>
           )}
         </div>

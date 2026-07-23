@@ -58,6 +58,7 @@ import {
 import { TransportBar } from "@/components/song-map/TransportBar";
 import { SpotifyLinkDialog } from "@/components/song-map/SpotifyLinkDialog";
 import { useSpotifyPlayback } from "@/components/song-map/useSpotifyPlayback";
+import { MusicNotes, Plus, Redo, Trash, Undo } from "@/components/icons";
 import { PropagateBanner } from "./PropagateBanner";
 import { lyricFor } from "./BarChip";
 import { BeatDots } from "./BeatDots";
@@ -828,9 +829,9 @@ export function ReshapeView({
           type="button"
           disabled={!canInsert}
           onClick={() => insertSel(0)}
-          className={toolBtnCls}
+          className={`${toolBtnCls} gap-1.5`}
         >
-          ＋ chord{insertSym ? ` (${insertSym})` : ""}
+          <Plus className="h-4 w-4" /> chord{insertSym ? ` (${insertSym})` : ""}
         </button>
       ) : (
         <>
@@ -839,9 +840,9 @@ export function ReshapeView({
             disabled={!canInsert}
             onClick={() => insertSel(0)}
             aria-label="Add a copy of this chord before it"
-            className={toolBtnCls}
+            className={`${toolBtnCls} gap-1.5`}
           >
-            ＋ before
+            <Plus className="h-4 w-4" /> before
           </button>
           <BeatDots bar={selBar} onSet={setBoundary} />
           <button
@@ -849,18 +850,18 @@ export function ReshapeView({
             disabled={!canInsert}
             onClick={() => insertSel(1)}
             aria-label="Add a copy of this chord after it"
-            className={toolBtnCls}
+            className={`${toolBtnCls} gap-1.5`}
           >
-            ＋ after
+            <Plus className="h-4 w-4" /> after
           </button>
           <button
             type="button"
             onClick={deleteSel}
             aria-label="Delete chord"
             title="Delete chord"
-            className={`${toolBtnCls} w-11 px-0 text-sm`}
+            className={`${toolBtnCls} w-11 px-0`}
           >
-            🗑
+            <Trash className="h-5 w-5" />
           </button>
         </>
       )
@@ -909,17 +910,17 @@ export function ReshapeView({
           type="button"
           onClick={() => insertBarSel(0)}
           aria-label="Add an empty bar before this one"
-          className={toolBtnCls}
+          className={`${toolBtnCls} gap-1.5`}
         >
-          ＋ bar before
+          <Plus className="h-4 w-4" /> bar before
         </button>
         <button
           type="button"
           onClick={() => insertBarSel(1)}
           aria-label="Add an empty bar after this one"
-          className={toolBtnCls}
+          className={`${toolBtnCls} gap-1.5`}
         >
-          ＋ bar after
+          <Plus className="h-4 w-4" /> bar after
         </button>
         <span className="flex-1" />
         <button
@@ -927,9 +928,9 @@ export function ReshapeView({
           onClick={deleteBarSel}
           aria-label="Delete bar"
           title="Delete bar"
-          className={`${toolBtnCls} w-11 px-0 text-sm`}
+          className={`${toolBtnCls} w-11 px-0`}
         >
-          🗑
+          <Trash className="h-5 w-5" />
         </button>
       </>
     ) : undefined;
@@ -1076,13 +1077,13 @@ export function ReshapeView({
               aria-pressed={spotifyOpen}
               aria-label="Listen on Spotify while reshaping"
               title="Listen on Spotify while reshaping"
-              className={`flex h-9 w-9 items-center justify-center rounded-md border text-base ${
+              className={`flex h-9 w-9 items-center justify-center rounded-md border ${
                 spotifyOpen
                   ? "border-green-300 bg-green-50 text-green-700"
                   : "border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
             >
-              ♫
+              <MusicNotes className="h-5 w-5" />
             </button>
           )}
           <button
@@ -1091,9 +1092,9 @@ export function ReshapeView({
             disabled={history.length === 0}
             aria-label="Undo last change"
             title="Undo last change"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-base text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
           >
-            ↶
+            <Undo className="h-5 w-5" />
           </button>
           <button
             type="button"
@@ -1101,9 +1102,9 @@ export function ReshapeView({
             disabled={future.length === 0}
             aria-label="Redo undone change"
             title="Redo undone change"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-base text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
           >
-            ↷
+            <Redo className="h-5 w-5" />
           </button>
           <button
             type="button"
@@ -1163,9 +1164,9 @@ export function ReshapeView({
                 onClick={() => deleteSection(id)}
                 aria-label={`Delete section ${def.label}`}
                 title="Delete this section"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-sm text-slate-400 hover:bg-white hover:text-rose-600"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-rose-600"
               >
-                🗑
+                <Trash className="h-5 w-5" />
               </button>
             </div>
 
