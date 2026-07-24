@@ -85,6 +85,8 @@ export interface SpotifyPlayback {
 
 const POLL_MS = 1000;
 const TICK_MS = 150;
+/** Device list changes rarely; poll it far less often than playback state. */
+const DEVICE_POLL_MS = 10000;
 /** Lead-in before an armed bar so the ear can lock onto its downbeat. */
 const PREROLL_MS = 3000;
 const SAVE_DEBOUNCE_MS = 800;
@@ -180,7 +182,7 @@ export function useSpotifyPlayback(
         return;
       }
       if (e.reason === "NO_ACTIVE_DEVICE") {
-        setError("Open Spotify on a device, then pick it under devices ⟳.");
+        setError("Open Spotify on a device, then pick it from the device dropdown.");
         return;
       }
     }
@@ -285,6 +287,7 @@ export function useSpotifyPlayback(
     void poll();
     void refreshDevices();
     const pollTimer = setInterval(() => void poll(), POLL_MS);
+    const devicePollTimer = setInterval(() => void refreshDevices(), DEVICE_POLL_MS);
 
     // Extrapolate between polls; only touch state when the bar/second flips.
     const tick = () => {
@@ -312,6 +315,7 @@ export function useSpotifyPlayback(
       disposed = true;
       clearInterval(pollTimer);
       clearInterval(tickTimer);
+      clearInterval(devicePollTimer);
       document.removeEventListener("visibilitychange", onVisible);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
